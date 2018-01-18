@@ -54,10 +54,10 @@ with codecs.open(version_py, 'r', encoding='utf-8') as fd:
 setup(name="kidash",
       description="GrimoireLab script to manage Kibana dashboards from the command line",
       long_description=long_description,
-      url="https://github.com/grimoirelab/GrimoireELK",
+      url="https://github.com/chaoss/grimoirelab-kidash",
       version=version,
       author="Bitergia",
-      author_email="metrics-grimoire@lists.libresoft.info",
+      author_email="grimoirelab-discussions@lists.linuxfoundation.org",
       license="GPLv3",
       classifiers=[
           'Development Status :: 5 - Production/Stable',
