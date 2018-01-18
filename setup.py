@@ -52,7 +52,8 @@ with codecs.open(version_py, 'r', encoding='utf-8') as fd:
                         fd.read(), re.MULTILINE).group(1)
 
 setup(name="kidash",
-      description="GrimoireLab script to manage Kibana dashboards from the command line",
+      description="GrimoireLab script to manage " +
+      "Kibana dashboards from the command line",
       long_description=long_description,
       url="https://github.com/chaoss/grimoirelab-kidash",
       version=version,
@@ -63,7 +64,8 @@ setup(name="kidash",
           'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
           'Topic :: Software Development',
-          'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
+          'License :: OSI Approved :: ' +
+          'GNU General Public License v3 or later (GPLv3+)',
           'Programming Language :: Python :: 3',
           'Programming Language :: Python :: 3.4',
           'Programming Language :: Python :: 3.5'],

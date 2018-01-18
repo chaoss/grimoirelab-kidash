@@ -112,18 +112,22 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
 
     if data_sources:
         if type_ == 'dashboard':
-            item_json = clean_dashboard_for_data_sources(item_json, data_sources)
+            item_json = clean_dashboard_for_data_sources(item_json,
+                                                         data_sources)
         if type_ == 'search':
             if not is_search_from_data_sources(item_json, data_sources):
-                logger.debug("Search %s not for %s. Not included.", item_id, data_sources)
+                logger.debug("Search %s not for %s. Not included.",
+                             item_id, data_sources)
                 return
         elif type_ == 'index_pattern':
             if not is_index_pattern_from_data_sources(item_json, data_sources):
-                logger.debug("Index pattern %s not for %s. Not included.", item_id, data_sources)
+                logger.debug("Index pattern %s not for %s. Not included.",
+                             item_id, data_sources)
                 return
         elif type_ == 'visualization':
             if not is_vis_from_data_sources(item_json, data_sources):
-                logger.debug("Vis %s not for %s. Not included.", item_id, data_sources)
+                logger.debug("Vis %s not for %s. Not included.",
+                             item_id, data_sources)
                 return
 
     if elastic_ver < 6:
@@ -176,7 +180,8 @@ def get_search_json(elastic, search_id):
 
 
 def get_index_pattern_json(elastic, index_pattern_id):
-    index_pattern_json = find_item_json(elastic, "index-pattern", index_pattern_id)
+    index_pattern_json = find_item_json(elastic, "index-pattern",
+                                        index_pattern_id)
 
     return index_pattern_json
 
@@ -198,7 +203,7 @@ def create_search(elastic_url, dashboard, index_pattern, es_index=None):
 
         :param elastic_url: URL for ElasticSearch (ES) server
         :param dashboard: kibana dashboard to be used as template
-        :param enrich_index: ES index with enriched items used in the new dashboard
+        :param enrich_index: ES enriched index used in the new dashboard
 
     """
 
@@ -235,7 +240,8 @@ def create_search(elastic_url, dashboard, index_pattern, es_index=None):
     new_search_source = json.loads(search_source)
     new_search_source['index'] = index_pattern
     new_search_source = json.dumps(new_search_source)
-    search_json['kibanaSavedObjectMeta']['searchSourceJSON'] = new_search_source
+    search_json['kibanaSavedObjectMeta']['searchSourceJSON'] = \
+        new_search_source
 
     search_json['title'] += " " + index_pattern
     new_search_id = search_id + "__" + index_pattern
@@ -269,7 +275,8 @@ def get_index_pattern_from_search(elastic, search):
     if not search_json:
         return
     if "kibanaSavedObjectMeta" in search_json:
-        index_pattern = get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
+        index_pattern = \
+            get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
     return index_pattern
 
 
@@ -281,10 +288,13 @@ def get_index_pattern_from_vis(elastic, vis):
     # The index pattern could be in search or in state
     # First search for it in saved search
     if "savedSearchId" in vis_json:
-        search_json = find_item_json(elastic, "search", vis_json["savedSearchId"])
-        index_pattern = get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
+        search_json = find_item_json(elastic, "search",
+                                     vis_json["savedSearchId"])
+        index_pattern = \
+            get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
     elif "kibanaSavedObjectMeta" in vis_json:
-        index_pattern = get_index_pattern_from_meta(vis_json["kibanaSavedObjectMeta"])
+        index_pattern = \
+            get_index_pattern_from_meta(vis_json["kibanaSavedObjectMeta"])
     return index_pattern
 
 
@@ -294,7 +304,7 @@ def create_index_pattern(elastic_url, dashboard, enrich_index, es_index=None):
 
         :param elastic_url: URL for ElasticSearch (ES) server
         :param dashboard: kibana dashboard to be used as template
-        :param enrich_index: ES index with enriched items used in the new dashboard
+        :param enrich_index: ES enriched index used in the new dashboard
 
     """
 
@@ -340,7 +350,8 @@ def create_index_pattern(elastic_url, dashboard, enrich_index, es_index=None):
     return enrich_index
 
 
-def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host, es_index=None):
+def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host,
+                     es_index=None):
     """ Create a new dashboard using dashboard as template
         and reading the data from enriched_index """
 
@@ -387,9 +398,12 @@ def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host, es_index
             vis_name = vis['_id'].split("_")[-1]
             vis_id = vis_name + "__" + enrich_index
             vis_data['title'] = vis_id
-            vis_meta = json.loads(vis_data['kibanaSavedObjectMeta']['searchSourceJSON'])
+            vis_meta = json.loads(
+                vis_data['kibanaSavedObjectMeta']['searchSourceJSON']
+                )
             vis_meta['index'] = enrich_index
-            vis_data['kibanaSavedObjectMeta']['searchSourceJSON'] = json.dumps(vis_meta)
+            vis_data['kibanaSavedObjectMeta']['searchSourceJSON'] = \
+                json.dumps(vis_meta)
             if "savedSearchId" in vis_data:
                 vis_data["savedSearchId"] = search_id
 
@@ -405,7 +419,8 @@ def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host, es_index
         es_index = ".kibana"
 
     # First create always the index pattern as data source
-    index_pattern = create_index_pattern(elastic_url, dashboard, enrich_index, es_index)
+    index_pattern = create_index_pattern(elastic_url, dashboard,
+                                         enrich_index, es_index)
     # If search is used create a new search with the new index_pàttern
     search_id = create_search(elastic_url, dashboard, index_pattern, es_index)
 
@@ -416,10 +431,12 @@ def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host, es_index
     dash_data['title'] = enrich_index
     # Load template panels to create the new ones with their new vis
     panels = json.loads(dash_data['panelsJSON'])
-    dash_data['panelsJSON'] = json.dumps(new_panels(elastic, panels, search_id))
+    dash_data['panelsJSON'] = json.dumps(new_panels(elastic, panels,
+                                         search_id))
     dash_path = "/dashboard/" + dashboard + "__" + enrich_index
     url = elastic.index_url + dash_path
-    res = requests_ses.post(url, data=json.dumps(dash_data), verify=False, headers=HEADERS_JSON)
+    res = requests_ses.post(url, data=json.dumps(dash_data), verify=False,
+                            headers=HEADERS_JSON)
     res.raise_for_status()
     dash_url = kibana_host + "/app/kibana#" + dash_path
     return dash_url
@@ -488,18 +505,18 @@ def read_panel_file(panel_file):
             kibana_str = f.read()
     else:
         try:
-            import panels
-            panels_mod = panels
             logger.debug("Reading panel from module panels")
             # Next is just a hack for files with "expected" prefix
             if panel_file.startswith('panels/json/'):
                 module_file = panel_file[len('panels/json/'):]
             else:
                 module_file = panel_file
-            kibana_bytes = pkgutil.get_data('panels', 'json' + '/' + module_file)
+            kibana_bytes = pkgutil.get_data('panels', 'json' + '/'
+                                            + module_file)
             kibana_str = kibana_bytes.decode(encoding='utf8')
         except (ImportError, FileNotFoundError, AttributeError):
-            logger.error("Panel not found (not in directory, no panels module): %s",
+            logger.error("Panel not found (not in directory, "
+                         + "no panels module): %s",
                          panel_file)
             return None
 
@@ -527,7 +544,8 @@ def get_dashboard_name(panel_file):
 
 def is_search_from_data_sources(search, data_sources):
     found = False
-    index_pattern = get_index_pattern_from_meta(search['kibanaSavedObjectMeta'])
+    index_pattern = \
+        get_index_pattern_from_meta(search['kibanaSavedObjectMeta'])
 
     for data_source in data_sources:
         # ex: github_issues
@@ -564,7 +582,8 @@ def is_index_pattern_from_data_sources(index, data_sources):
     return found
 
 
-def import_dashboard(elastic_url, import_file, es_index=None, data_sources=None):
+def import_dashboard(elastic_url, import_file, es_index=None,
+                     data_sources=None):
     """ Import a dashboard from a file
     """
 
@@ -596,21 +615,27 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None):
 
     if 'searches' in dashboard:
         for search in dashboard['searches']:
-            import_item_json(elastic, "search", search['id'], search['value'], data_sources)
+            import_item_json(elastic, "search", search['id'], search['value'],
+                             data_sources)
 
     if 'index_patterns' in dashboard:
         for index in dashboard['index_patterns']:
-            if not data_sources or is_index_pattern_from_data_sources(index, data_sources):
-                import_item_json(elastic, "index-pattern", index['id'], index['value'])
+            if not data_sources or \
+                    is_index_pattern_from_data_sources(index, data_sources):
+                import_item_json(elastic, "index-pattern",
+                                 index['id'], index['value'])
             else:
-                logger.debug("Index pattern %s not for %s. Not included.", index['id'], data_sources)
+                logger.debug("Index pattern %s not for %s. Not included.",
+                             index['id'], data_sources)
 
     if 'visualizations' in dashboard:
         for vis in dashboard['visualizations']:
             if not data_sources or is_vis_from_data_sources(vis, data_sources):
-                import_item_json(elastic, "visualization", vis['id'], vis['value'])
+                import_item_json(elastic, "visualization",
+                                 vis['id'], vis['value'])
             else:
-                logger.debug("Vis %s not for %s. Not included.", vis['id'], data_sources)
+                logger.debug("Vis %s not for %s. Not included.",
+                             vis['id'], data_sources)
 
 
 def fetch_dashboard(elastic_url, dash_id, es_index=None):
@@ -631,7 +656,8 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
 
     elastic = ElasticSearch(elastic_url, es_index)
 
-    kibana["dashboard"] = {"id": dash_id, "value": get_dashboard_json(elastic, dash_id)}
+    kibana["dashboard"] = {"id": dash_id,
+                           "value": get_dashboard_json(elastic, dash_id)}
 
     if "panelsJSON" not in kibana["dashboard"]["value"]:
         # The dashboard is empty. No visualizations included.
@@ -647,23 +673,34 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
             search_id = get_search_from_vis(elastic, vis_id)
             if search_id and search_id not in search_ids_done:
                 search_ids_done.append(search_id)
-                kibana["searches"].append({"id": search_id,
-                                           "value": get_search_json(elastic, search_id)})
+                kibana["searches"].append(
+                    {"id": search_id,
+                     "value": get_search_json(elastic, search_id)}
+                    )
             index_pattern_id = get_index_pattern_from_vis(elastic, vis_id)
             if index_pattern_id and index_pattern_id not in index_ids_done:
                 index_ids_done.append(index_pattern_id)
-                kibana["index_patterns"].append({"id": index_pattern_id,
-                                                 "value": get_index_pattern_json(elastic, index_pattern_id)})
+                kibana["index_patterns"].append(
+                    {"id": index_pattern_id,
+                     "value": get_index_pattern_json(elastic,
+                                                     index_pattern_id)}
+                    )
         elif panel['type'] in ['search']:
             # A search could be directly visualized inside a panel
             search_id = panel['id']
-            kibana["searches"].append({"id": search_id,
-                                       "value": get_search_json(elastic, search_id)})
-            index_pattern_id = get_index_pattern_from_search(elastic, search_id)
+            kibana["searches"].append(
+                {"id": search_id,
+                 "value": get_search_json(elastic, search_id)}
+                )
+            index_pattern_id = get_index_pattern_from_search(elastic,
+                                                             search_id)
             if index_pattern_id and index_pattern_id not in index_ids_done:
                 index_ids_done.append(index_pattern_id)
-                kibana["index_patterns"].append({"id": index_pattern_id,
-                                                 "value": get_index_pattern_json(elastic, index_pattern_id)})
+                kibana["index_patterns"].append(
+                    {"id": index_pattern_id,
+                     "value": get_index_pattern_json(elastic,
+                                                     index_pattern_id)}
+                    )
 
     return kibana
 
