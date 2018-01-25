@@ -124,6 +124,46 @@ def fix_dash_bool_filters(dash_json):
 
     return dash_json
 
+
+def add_vis_style(item_json):
+    """ Right now a fix style is added using the correct font size """
+
+    if "visState" in item_json:
+        state = json.loads(item_json["visState"])
+        if state["type"] != "metric":
+            return item_json
+        if "fontSize" in state["params"]:
+            # In Kibana6 the params for a metric include several new params
+            if "metric" in state['params']:
+                # A kibana6 vis, don't modify it
+                return item_json
+            state['params']["metric"] = {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [
+                    {
+                        "from": 0,
+                        "to": 10000
+                    }
+                ],
+                "labels": {
+                    "show": True
+                },
+                "invertColors": False,
+                "style": {
+                    "bgFill": "#000",
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": state['params']['fontSize']
+                }
+            }
+            item_json['visState'] = json.dumps(state)
+    return item_json
+
+
 def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
     """ Import an item in Elasticsearch  """
     elastic_ver = find_elasticsearch_version(elastic)
@@ -159,6 +199,9 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
             # Bool filters value must be true/false no 1/0 in es6
             item_json = fix_dash_bool_filters(item_json)
 
+        if type_ == 'visualization':
+            # Metric vis includes in es6 new params for the style
+            item_json = add_vis_style(item_json)
         item_json = {"type": type_, type_: item_json}
 
     headers = HEADERS_JSON
