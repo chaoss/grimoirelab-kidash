@@ -106,6 +106,24 @@ def clean_dashboard_for_data_sources(dash_json, data_sources):
     return dash_json_clean
 
 
+def fix_dash_bool_filters(dash_json):
+    """ The bool filter is pretty deep inside the JSON document """
+    if "kibanaSavedObjectMeta" in dash_json and "searchSourceJSON" in dash_json["kibanaSavedObjectMeta"]:
+        meta_saved =  json.loads(dash_json["kibanaSavedObjectMeta"]["searchSourceJSON"])
+        if 'filter' in meta_saved:
+            for filter_ in meta_saved['filter']:
+                if 'match' in filter_['query']:
+                    match = filter_['query']['match']
+                    for field in match:
+                        if match[field]['type'] == 'phrase':
+                            if match[field]['query'] == 1:
+                                match[field]['query'] = True
+                            elif match[field]['query'] == 0:
+                                match[field]['query'] = False
+        dash_json["kibanaSavedObjectMeta"]["searchSourceJSON"] = json.dumps(meta_saved)
+
+    return dash_json
+
 def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
     """ Import an item in Elasticsearch  """
     elastic_ver = find_elasticsearch_version(elastic)
@@ -137,6 +155,10 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
             # Inside a json dashboard ids don't include type_
             item_id = type_ + ":" + item_id
         item_json_url = elastic.index_url + "/doc/" + item_id
+        if type_ == 'dashboard':
+            # Bool filters value must be true/false no 1/0 in es6
+            item_json = fix_dash_bool_filters(item_json)
+
         item_json = {"type": type_, type_: item_json}
 
     headers = HEADERS_JSON
