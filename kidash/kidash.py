@@ -105,6 +105,19 @@ def clean_dashboard_for_data_sources(dash_json, data_sources):
 
     return dash_json_clean
 
+def fix_dashboard_heights(item_json):
+    """ In vis of height 1 increase it to 2 """
+
+    panels = json.loads(item_json["panelsJSON"])
+
+    for panel in panels:
+        if panel['size_y'] == 1:
+            panel['size_y'] += 1
+
+    item_json["panelsJSON"] = json.dumps(panels)
+
+    return item_json
+
 
 def fix_dash_bool_filters(dash_json):
     """ The bool filter is pretty deep inside the JSON document """
@@ -202,6 +215,8 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
         if type_ == 'visualization':
             # Metric vis includes in es6 new params for the style
             item_json = add_vis_style(item_json)
+            # Vis height of 1 is too small for kibana6
+            item_json = fix_dashboard_heights(item_json)
         item_json = {"type": type_, type_: item_json}
 
     headers = HEADERS_JSON
