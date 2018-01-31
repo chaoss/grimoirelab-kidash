@@ -48,6 +48,8 @@ def get_params_parser_create_dash():
     parser.add_argument("--list", action='store_true', help="list available dashboards")
     parser.add_argument('-g', '--debug', dest='debug', action='store_true')
     parser.add_argument("--data-sources", nargs='+', dest="data_sources", help="Data sources to be included")
+    parser.add_argument("--add-vis-studies", dest="add_vis_studies",
+                        action='store_true', help="Include visualizations for studies")
 
     return parser
 
@@ -71,7 +73,8 @@ if __name__ == '__main__':
     config_logging(ARGS.debug)
 
     if ARGS.import_file:
-        import_dashboard(ARGS.elastic_url, ARGS.import_file, ARGS.kibana_index, ARGS.data_sources)
+        import_dashboard(ARGS.elastic_url, ARGS.import_file, ARGS.kibana_index,
+                         ARGS.data_sources, ARGS.add_vis_studies)
     elif ARGS.export_file:
         if os.path.isfile(ARGS.export_file):
             logging.info("%s exists. Remove it before running.", ARGS.export_file)
