@@ -41,6 +41,7 @@ requests_ses = grimoire_con()
 
 ES_VER = None
 HEADERS_JSON = {"Content-Type": "application/json"}
+STUDY_PATTERN = "_study_"
 
 
 def find_elasticsearch_version(elastic):
@@ -83,10 +84,13 @@ def find_item_json(elastic, type_, item_id):
     return item_json
 
 
-def clean_dashboard_for_data_sources(dash_json, data_sources):
-    """ Remove all items that are not from the data sources """
+def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False):
+    """ Remove all items that are not from the data sources or that are studies"""
 
-    logger.debug("Cleaning dashboard for %s", data_sources)
+    if data_sources:
+        logger.debug("Cleaning dashboard for %s", data_sources)
+    if not add_vis_studies:
+        logger.debug("Cleaning dashboard from studies vis")
 
     dash_json_clean = copy.deepcopy(dash_json)
 
@@ -97,10 +101,15 @@ def clean_dashboard_for_data_sources(dash_json, data_sources):
     panelsJSON = json.loads(dash_json['panelsJSON'])
     clean_panelsJSON = []
     for panel in panelsJSON:
-        for ds in data_sources:
-            if panel['id'].split("_")[0] == ds:
-                clean_panelsJSON.append(panel)
-                break
+        if STUDY_PATTERN in panel['id'] and not add_vis_studies:
+            continue
+        if data_sources:
+            for ds in data_sources:
+                if panel['id'].split("_")[0] == ds:
+                    clean_panelsJSON.append(panel)
+                    break
+        else:
+            clean_panelsJSON.append(panel)
     dash_json_clean['panelsJSON'] = json.dumps(clean_panelsJSON)
 
     return dash_json_clean
@@ -177,14 +186,19 @@ def add_vis_style(item_json):
     return item_json
 
 
-def import_item_json(elastic, type_, item_id, item_json, data_sources=None):
+def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
+                     add_vis_studies=False):
     """ Import an item in Elasticsearch  """
     elastic_ver = find_elasticsearch_version(elastic)
 
+    if not add_vis_studies:
+        if type_ == 'dashboard':
+            # Clean ths vis related to studies
+            item_json = clean_dashboard(item_json, data_sources=None,
+                                        add_vis_studies=add_vis_studies)
     if data_sources:
         if type_ == 'dashboard':
-            item_json = clean_dashboard_for_data_sources(item_json,
-                                                         data_sources)
+            item_json = clean_dashboard(item_json, data_sources, add_vis_studies)
         if type_ == 'search':
             if not is_search_from_data_sources(item_json, data_sources):
                 logger.debug("Search %s not for %s. Not included.",
@@ -651,6 +665,15 @@ def is_vis_from_data_sources(vis, data_sources):
     return found
 
 
+def is_vis_study(vis):
+    vis_study = False
+
+    if STUDY_PATTERN in vis['id']:
+        vis_study = True
+
+    return vis_study
+
+
 def is_index_pattern_from_data_sources(index, data_sources):
     found = False
     es_index = index['value']['title']
@@ -665,7 +688,7 @@ def is_index_pattern_from_data_sources(index, data_sources):
 
 
 def import_dashboard(elastic_url, import_file, es_index=None,
-                     data_sources=None):
+                     data_sources=None, add_vis_studies=False):
     """ Import a dashboard from a file
     """
 
@@ -677,12 +700,13 @@ def import_dashboard(elastic_url, import_file, es_index=None,
                      import_file)
         sys.exit(1)
 
-    feed_dashboard(dashboard, elastic_url, es_index, data_sources)
+    feed_dashboard(dashboard, elastic_url, es_index, data_sources, add_vis_studies)
 
     logger.info("Dashboard %s imported", get_dashboard_name(import_file))
 
 
-def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None):
+def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
+                   add_vis_studies=False):
     """ Import a dashboard. If data_sources are defined, just include items
         for this data source.
     """
@@ -693,7 +717,7 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None):
     elastic = ElasticSearch(elastic_url, es_index)
 
     import_item_json(elastic, "dashboard", dashboard['dashboard']['id'],
-                     dashboard['dashboard']['value'], data_sources)
+                     dashboard['dashboard']['value'], data_sources, add_vis_studies)
 
     if 'searches' in dashboard:
         for search in dashboard['searches']:
@@ -712,7 +736,9 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None):
 
     if 'visualizations' in dashboard:
         for vis in dashboard['visualizations']:
-            if not data_sources or is_vis_from_data_sources(vis, data_sources):
+            if not add_vis_studies and is_vis_study(vis):
+                logger.debug("Vis %s is for an study. Not included.", vis['id'])
+            elif not data_sources or is_vis_from_data_sources(vis, data_sources):
                 import_item_json(elastic, "visualization",
                                  vis['id'], vis['value'])
             else:
