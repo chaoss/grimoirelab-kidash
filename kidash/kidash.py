@@ -115,11 +115,26 @@ def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False):
     return dash_json_clean
 
 def fix_dashboard_heights(item_json):
-    """ In vis of height 1 increase it to 2 """
+    """ In vis of height 1 increase it to 2
+
+    This method is designed to help in the migration from dashboards
+    created with Kibana < 6, in which with height 1 the visualization could
+    be shown completly in some cases, to Kibana > 6, in which with a height of
+    1 the title bar of the visualization makes imposible to show a complete
+    visualization of any kind.
+
+    """
 
     panels = json.loads(item_json["panelsJSON"])
 
     for panel in panels:
+        if 'size_y' not in panel:
+            # The layout definition is not from Kibana < 6
+            # In Kibana >= 6 the height is the "h" field in:
+            # "gridData": {"x": 0,"y": 0,"w": 4,"h": 2,"i": "1"}
+            logger.debug("Not fixing height in Kibana >= 6 versions.")
+            break
+
         if panel['size_y'] == 1:
             panel['size_y'] += 1
 
