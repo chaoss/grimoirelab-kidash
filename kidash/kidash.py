@@ -28,9 +28,13 @@ import json
 import logging
 
 import os
+
+import dateutil
 import os.path
 import pkgutil
 import sys
+
+from datetime import datetime as dt
 
 from grimoire_elk.elastic import ElasticSearch
 from grimoire_elk.enriched.utils import grimoire_con
@@ -703,7 +707,7 @@ def is_index_pattern_from_data_sources(index, data_sources):
 
 
 def import_dashboard(elastic_url, import_file, es_index=None,
-                     data_sources=None, add_vis_studies=False):
+                     data_sources=None, add_vis_studies=False, strict=False):
     """ Import a dashboard from a file
     """
 
@@ -715,9 +719,40 @@ def import_dashboard(elastic_url, import_file, es_index=None,
                      import_file)
         sys.exit(1)
 
-    feed_dashboard(dashboard, elastic_url, es_index, data_sources, add_vis_studies)
+    import_dash = True
+    if strict:
+        dash_id = dashboard['dashboard'].get('id')
+        if not dash_id:
+            raise ValueError("'id' field not found in ", + import_file)
 
-    logger.info("Dashboard %s imported", get_dashboard_name(import_file))
+        logger.debug("Retrieving dashboard %s to check release date.", dash_id)
+        current_panel = fetch_dashboard(elastic_url, dash_id, es_index)
+
+        current_release = current_panel['dashboard']['value'].get('release_date')
+        import_release = dashboard['dashboard']['value'].get('release_date')
+
+        logger.debug("Dashboard %s current release date %s.", dash_id, current_release)
+
+        if not import_release:
+            raise ValueError("'release_date' field not found in " + import_file)
+
+        logger.debug("New dashboard %s release date %s.", import_file, import_release)
+
+        # If there is no current release, that means current dashboard was created before adding release_date field
+        # or panel is new in this ElasticSearch server, then import dashboard
+        if current_release:
+            import_date = dateutil.parser.parse(import_release)
+            current_date = dateutil.parser.parse(current_release)
+
+            if current_date >= import_date:
+                logger.info("Dashboard %s not imported from %s. Newer or equal version found in Kibana: %s",
+                            dash_id, import_file, current_date)
+                import_dash = False
+
+    if import_dash:
+        feed_dashboard(dashboard, elastic_url, es_index, data_sources, add_vis_studies)
+
+        logger.info("Dashboard %s imported", get_dashboard_name(import_file))
 
 
 def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
@@ -833,6 +868,9 @@ def export_dashboard(elastic_url, dash_id, export_file, es_index=None):
     logger.debug("Exporting dashboard %s to %s", dash_id, export_file)
 
     kibana = fetch_dashboard(elastic_url, dash_id, es_index)
+
+    # Add release date to identify this particular version of the panel
+    kibana['dashboard']['value']['release_date'] = dt.utcnow().isoformat()
 
     with open(export_file, 'w') as f:
         f.write(json.dumps(kibana, indent=4, sort_keys=True))
