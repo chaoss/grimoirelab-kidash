@@ -45,6 +45,7 @@ requests_ses = grimoire_con()
 
 ES_VER = None
 HEADERS_JSON = {"Content-Type": "application/json"}
+RELEASE_DATE = 'release_date'
 STUDY_PATTERN = "_study_"
 
 
@@ -727,13 +728,13 @@ def import_dashboard(elastic_url, import_file, es_index=None,
         logger.debug("Retrieving dashboard %s to check release date.", dash_id)
         current_panel = fetch_dashboard(elastic_url, dash_id, es_index)
 
-        current_release = current_panel['dashboard']['value'].get('release_date')
-        import_release = dashboard['dashboard']['value'].get('release_date')
+        current_release = current_panel['dashboard']['value'].get(RELEASE_DATE)
+        import_release = dashboard['dashboard']['value'].get(RELEASE_DATE)
 
         logger.debug("Dashboard %s current release date %s.", dash_id, current_release)
 
         if not import_release:
-            raise ValueError("'release_date' field not found in " + import_file)
+            raise ValueError("'" + RELEASE_DATE + "' field not found in " + import_file)
 
         logger.debug("New dashboard %s release date %s.", import_file, import_release)
 
@@ -869,7 +870,7 @@ def export_dashboard(elastic_url, dash_id, export_file, es_index=None):
     kibana = fetch_dashboard(elastic_url, dash_id, es_index)
 
     # Add release date to identify this particular version of the panel
-    kibana['dashboard']['value']['release_date'] = dt.utcnow().isoformat()
+    kibana['dashboard']['value'][RELEASE_DATE] = dt.utcnow().isoformat()
 
     with open(export_file, 'w') as f:
         f.write(json.dumps(kibana, indent=4, sort_keys=True))
