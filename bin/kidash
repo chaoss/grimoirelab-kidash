@@ -28,6 +28,8 @@ import logging
 import os
 import sys
 
+from requests import HTTPError
+
 from grimoire_elk.raw.elastic import ElasticOcean
 from grimoire_elk.utils import config_logging
 from kidash.kidash import import_dashboard, export_dashboard, list_dashboards
@@ -73,13 +75,20 @@ if __name__ == '__main__':
 
     config_logging(ARGS.debug)
 
-    if ARGS.import_file:
-        import_dashboard(ARGS.elastic_url, ARGS.import_file, ARGS.kibana_index,
-                         ARGS.data_sources, ARGS.add_vis_studies, ARGS.strict)
-    elif ARGS.export_file:
-        if os.path.isfile(ARGS.export_file):
-            logging.info("%s exists. Remove it before running.", ARGS.export_file)
-            sys.exit(0)
-        export_dashboard(ARGS.elastic_url, ARGS.dashboard, ARGS.export_file, ARGS.kibana_index)
-    elif ARGS.list:
-        list_dashboards(ARGS.elastic_url, ARGS.kibana_index)
+    try:
+        if ARGS.import_file:
+            import_dashboard(ARGS.elastic_url, ARGS.import_file, ARGS.kibana_index,
+                             ARGS.data_sources, ARGS.add_vis_studies, ARGS.strict)
+        elif ARGS.export_file:
+            if os.path.isfile(ARGS.export_file):
+                logging.info("%s exists. Remove it before running.", ARGS.export_file)
+                sys.exit(0)
+            export_dashboard(ARGS.elastic_url, ARGS.dashboard, ARGS.export_file, ARGS.kibana_index)
+        elif ARGS.list:
+            list_dashboards(ARGS.elastic_url, ARGS.kibana_index)
+
+    except HTTPError as http_error:
+        res = http_error.response
+        error_msg = u'%s. Content: %s' % (http_error, res.content)
+        logging.error(error_msg)
+
