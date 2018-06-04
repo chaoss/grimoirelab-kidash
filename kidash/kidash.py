@@ -94,7 +94,6 @@ def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False):
 
     dash_json_clean = copy.deepcopy(dash_json)
 
-    dash_json_clean['uiStateJSON'] = ""
     dash_json_clean['panelsJSON'] = ""
 
     # Time to add the panels (widgets) related to the data_sources
