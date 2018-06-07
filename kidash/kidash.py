@@ -258,10 +258,50 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
     headers = HEADERS_JSON
     res = requests_ses.post(item_json_url, data=json.dumps(item_json),
                             verify=False, headers=headers)
+
+    # Check if there is a problem with `release_date` field mapping
+    # In Kibana 6 we need to add the corresponding mapping to .kibana index
+    if res.status_code == 400:
+        res_content = json.loads(res.content)
+        if res_content['error']['type'] == "strict_dynamic_mapping_exception" and \
+                RELEASE_DATE in res_content['error']['reason']:
+
+            logger.debug("Field `%s` not present in `.kibana` mapping.", RELEASE_DATE)
+
+            # Update .kibana mapping
+            res = put_release_date_mapping(elastic)
+            res.raise_for_status()
+
+            logger.debug("`.kibana` mapping updated.")
+
+            #retry uploading panel
+            res = requests_ses.post(item_json_url, data=json.dumps(item_json),
+                                    verify=False, headers=headers)
+
+
     res.raise_for_status()
 
     return item_json
 
+def put_release_date_mapping(elastic):
+    """Adds mapping for `release_date` field to .kibana index in Kibana 6"""
+    mapping = """
+    {
+      "properties": {
+        "dashboard": {
+          "properties": {
+            "release_date": {
+              "type": "date"
+            }
+          }
+        }
+      }
+    }
+    """
+
+    url = elastic.index_url + "/_mapping/doc"
+    return requests_ses.put(url, data=mapping,
+                            verify=False, headers=HEADERS_JSON)
 
 def exists_dashboard(elastic_url, dash_id, es_index=None):
     """ Check if a dashboard exists """

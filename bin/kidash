@@ -92,3 +92,6 @@ if __name__ == '__main__':
         error_msg = u'%s. Content: %s' % (http_error, res.content)
         logging.error(error_msg)
 
+    except ValueError as value_error:
+        logging.error(value_error)
+
