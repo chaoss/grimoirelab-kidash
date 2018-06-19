@@ -3,7 +3,7 @@
 #
 # Panels lib
 #
-# Copyright (C) 2016 Bitergia
+# Copyright (C) 2016-2018 Bitergia
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -692,10 +692,28 @@ def get_dashboard_name(panel_file):
     if kibana and 'dashboard' in kibana:
         dash_name = kibana['dashboard']['id']
     elif kibana:
-        logger.error("Wrong panel format (can't find 'dashboard' field): %s",
+        logger.error("Wrong panel format (can't find 'dashboard' or 'index_patterns' fields): %s",
                      panel_file)
     return dash_name
 
+def get_index_patterns_name(panel_file):
+    """
+    Return  in a file
+
+    :param panel_file: file with the index patterns definition
+    :return: a list with the name of the index patterns
+    """
+
+    index_patterns_name = []
+
+    kibana = read_panel_file(panel_file)
+    if kibana and 'index_patterns' in kibana:
+        for index_pattern in kibana['index_patterns']:
+            index_patterns_name.append(index_pattern['id'])
+    elif kibana:
+        logger.error("Wrong panel format (can't find 'index_patterns' fields): %s",
+                     panel_file)
+    return index_patterns_name
 
 def is_search_from_data_sources(search, data_sources):
     found = False
@@ -754,8 +772,12 @@ def import_dashboard(elastic_url, import_file, es_index=None,
     logger.debug("Reading panels JSON file: %s", import_file)
     dashboard = read_panel_file(import_file)
 
-    if (dashboard is None) or ('dashboard' not in dashboard):
-        logger.error("Wrong file format (can't find 'dashboard' field): %s",
+    if dashboard is None:
+        logger.error("Can not find dashboard in: %s", import_file)
+        sys.exit(1)
+
+    if 'dashboard' not in dashboard and 'index_patterns' not in dashboard:
+        logger.error("Wrong file format (can't find dashboard or index_patterns fields): %s",
                      import_file)
         sys.exit(1)
 
@@ -792,7 +814,10 @@ def import_dashboard(elastic_url, import_file, es_index=None,
     if import_dash:
         feed_dashboard(dashboard, elastic_url, es_index, data_sources, add_vis_studies)
 
-        logger.info("Dashboard %s imported", get_dashboard_name(import_file))
+        if 'dashboard' in dashboard:
+            logger.info("Dashboard %s imported", get_dashboard_name(import_file))
+        elif 'index_patterns' in dashboard:
+            logger.info("Index patterns %s imported", get_index_patterns_name(import_file))
 
 
 def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
@@ -806,8 +831,9 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
 
     elastic = ElasticSearch(elastic_url, es_index)
 
-    import_item_json(elastic, "dashboard", dashboard['dashboard']['id'],
-                     dashboard['dashboard']['value'], data_sources, add_vis_studies)
+    if 'dashboard' in dashboard:
+        import_item_json(elastic, "dashboard", dashboard['dashboard']['id'],
+                        dashboard['dashboard']['value'], data_sources, add_vis_studies)
 
     if 'searches' in dashboard:
         for search in dashboard['searches']:
@@ -837,6 +863,14 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
 
 
 def fetch_dashboard(elastic_url, dash_id, es_index=None):
+    """
+    Fetch a dashboard JSON definition from Kibana and return it.
+
+    :param elastic_url: Elasticsearch URL
+    :param dash_id: dashboard identifier
+    :param es_index: kibana index
+    :return: a dict with the dashboard data (vis, searches and index patterns)
+    """
 
     # Kibana dashboard fields
     kibana = {"dashboard": None,
@@ -903,7 +937,48 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
     return kibana
 
 
-def export_dashboard(elastic_url, dash_id, export_file, es_index=None):
+def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
+
+    if os.path.isfile(export_file):
+        logging.info("%s exists. Remove it before running.", export_file)
+        sys.exit(0)
+
+    with open(export_file, 'w') as f:
+        if not split_index_patterns:
+            f.write(json.dumps(dash_json, indent=4, sort_keys=True))
+        else:
+            index_patterns = dash_json.pop("index_patterns")
+
+            with open(export_file, 'w') as f:
+                f.write(json.dumps(dash_json, indent=4, sort_keys=True))
+
+            export_folder = os.path.dirname(export_file)
+
+            for index_pattern in index_patterns:
+                export_file_index = os.path.join(export_folder, index_pattern['id'] + "-index-pattern.json")
+                index_pattern_importable = {"index_patterns":[index_pattern]}
+
+                if os.path.isfile(export_file_index):
+                    logging.info("%s exists. Remove it before running.", export_file_index)
+                    sys.exit(0)
+
+                with open(export_file_index, 'w') as f:
+                    f.write(json.dumps(index_pattern_importable, indent=4, sort_keys=True))
+
+
+
+def export_dashboard(elastic_url, dash_id, export_file, es_index=None, split_index_patterns=False):
+    """
+    Export a dashboard from Kibana to a file in JSON format. If split_index_patterns is defined it will
+    store the index patterns in separate files.
+
+    :param elastic_url: Elasticsearch URL
+    :param dash_id: dashboard identifier
+    :param export_file: name of the file in which to export the dashboard
+    :param es_index: name of the Kibana index
+    :param split_index_patterns: store the index patterns in separate files
+    :return:
+    """
 
     logger.debug("Exporting dashboard %s to %s", dash_id, export_file)
 
@@ -912,7 +987,6 @@ def export_dashboard(elastic_url, dash_id, export_file, es_index=None):
     # Add release date to identify this particular version of the panel
     kibana['dashboard']['value'][RELEASE_DATE] = dt.utcnow().isoformat()
 
-    with open(export_file, 'w') as f:
-        f.write(json.dumps(kibana, indent=4, sort_keys=True))
+    export_dashboard_files(kibana, export_file, split_index_patterns)
 
     logger.debug("Done")
