@@ -261,7 +261,7 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
     # Check if there is a problem with `release_date` field mapping
     # In Kibana 6 we need to add the corresponding mapping to .kibana index
     if res.status_code == 400:
-        res_content = json.loads(res.content)
+        res_content = res.json()
         if res_content['error']['type'] == "strict_dynamic_mapping_exception" and \
                 RELEASE_DATE in res_content['error']['reason']:
 
@@ -271,7 +271,7 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
             res = put_release_date_mapping(elastic)
             res.raise_for_status()
 
-            logger.debug("`.kibana` mapping updated.")
+            logger.debug("`.kibana` mapping updated for dashboard and index-pattern objects.")
 
             #retry uploading panel
             res = requests_ses.post(item_json_url, data=json.dumps(item_json),
@@ -288,6 +288,13 @@ def put_release_date_mapping(elastic):
     {
       "properties": {
         "dashboard": {
+          "properties": {
+            "release_date": {
+              "type": "date"
+            }
+          }
+        },
+        "index-pattern": {
           "properties": {
             "release_date": {
               "type": "date"
@@ -770,54 +777,98 @@ def import_dashboard(elastic_url, import_file, es_index=None,
     """
 
     logger.debug("Reading panels JSON file: %s", import_file)
-    dashboard = read_panel_file(import_file)
+    json_to_import = read_panel_file(import_file)
 
-    if dashboard is None:
-        logger.error("Can not find dashboard in: %s", import_file)
+    if json_to_import is None:
+        logger.error("Can not find a valid JSON in: %s", import_file)
         sys.exit(1)
 
-    if 'dashboard' not in dashboard and 'index_patterns' not in dashboard:
+    if 'dashboard' not in json_to_import and 'index_patterns' not in json_to_import:
         logger.error("Wrong file format (can't find dashboard or index_patterns fields): %s",
                      import_file)
         sys.exit(1)
 
-    import_dash = True
-    if strict:
-        dash_id = dashboard['dashboard'].get('id')
+    if 'dashboard' in json_to_import:
+        logger.debug("Panel detected.")
+        dash_id = json_to_import['dashboard'].get('id')
+
         if not dash_id:
             raise ValueError("'id' field not found in ", + import_file)
 
-        logger.debug("Retrieving dashboard %s to check release date.", dash_id)
-        current_panel = fetch_dashboard(elastic_url, dash_id, es_index)
+        import_json = True
+        if strict:
+            logger.debug("Retrieving dashboard %s to check release date.", dash_id)
+            current_panel = fetch_dashboard(elastic_url, dash_id, es_index)
 
-        current_release = current_panel['dashboard']['value'].get(RELEASE_DATE)
-        import_release = dashboard['dashboard']['value'].get(RELEASE_DATE)
+            # If there is no current release, that means current dashboard was created before adding release_date field
+            # or panel is new in this ElasticSearch server, then import dashboard
+            import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'])
 
-        logger.debug("Dashboard %s current release date %s.", dash_id, current_release)
-
-        if not import_release:
-            raise ValueError("'" + RELEASE_DATE + "' field not found in " + import_file)
-
-        logger.debug("New dashboard %s release date %s.", import_file, import_release)
-
-        # If there is no current release, that means current dashboard was created before adding release_date field
-        # or panel is new in this ElasticSearch server, then import dashboard
-        if current_release:
-            import_date = dateutil.parser.parse(import_release)
-            current_date = dateutil.parser.parse(current_release)
-
-            if current_date >= import_date:
-                logger.info("Dashboard %s not imported from %s. Newer or equal version found in Kibana: %s",
-                            dash_id, import_file, current_date)
-                import_dash = False
-
-    if import_dash:
-        feed_dashboard(dashboard, elastic_url, es_index, data_sources, add_vis_studies)
-
-        if 'dashboard' in dashboard:
+        if import_json:
+            feed_dashboard(json_to_import, elastic_url, es_index, data_sources, add_vis_studies)
             logger.info("Dashboard %s imported", get_dashboard_name(import_file))
-        elif 'index_patterns' in dashboard:
-            logger.info("Index patterns %s imported", get_index_patterns_name(import_file))
+
+        else:
+            logger.warning("Dashboard %s not imported from %s. Newer or equal version found in Kibana.",
+                        dash_id, import_file)
+
+    elif 'index_patterns' in json_to_import:
+        logger.debug("Index-Pattern detected.")
+
+        for index_pattern in json_to_import['index_patterns']:
+            ip_id = index_pattern.get('id')
+
+            if not ip_id:
+                raise ValueError("'id' field not found in ", + import_file)
+
+            import_json = True
+            if strict:
+                logger.debug("Retrieving index pattern %s to check release date.", ip_id)
+                current_ip = fetch_index_pattern(elastic_url, ip_id, es_index)
+
+                # If there is no current release, that means current index pattern was created before adding
+                # release_date field or index pattern is new in this ElasticSearch server, then import it
+                import_json = new_release(current_ip, index_pattern)
+
+            if import_json:
+                feed_dashboard({"index_patterns": [index_pattern]}, elastic_url, es_index, data_sources, add_vis_studies)
+                logger.info("Index pattern %s from %s imported", ip_id, get_index_patterns_name(import_file))
+
+            else:
+                logger.warning("Index Pattern %s not imported from %s. Newer or equal version found in Kibana.",
+                                ip_id, import_file)
+
+    else:
+        logger.warning("Strict mode supported only for panels and index patterns.")
+
+
+def new_release(current_item, item_to_import):
+    """Check whether a release is newer than another one
+
+    :param current_release:
+    :param import_release:
+    :return: True if import release is newer than current one
+    """
+
+    current_release = current_item['value'].get(RELEASE_DATE)
+    import_release = item_to_import['value'].get(RELEASE_DATE)
+
+    logger.debug("Current item release date %s.", current_release)
+
+    if not import_release:
+        raise ValueError("'" + RELEASE_DATE + "' field not found in item to import.")
+
+    logger.debug("Item to import release date %s.", import_release)
+
+    is_new = True
+    if current_release:
+        import_date = dateutil.parser.parse(import_release)
+        current_date = dateutil.parser.parse(current_release)
+
+        if current_date >= import_date:
+            is_new = False
+
+    return is_new
 
 
 def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
@@ -861,6 +912,29 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
                 logger.debug("Vis %s not for %s. Not included.",
                              vis['id'], data_sources)
 
+
+def fetch_index_pattern(elastic_url, ip_id, es_index=None):
+    """
+    Fetch an index pattern JSON definition from Kibana and return it.
+
+    :param elastic_url: Elasticsearch URL
+    :param ip_id: index pattern identifier
+    :param es_index: kibana index
+    :return: a dict with index pattern data
+    """
+
+    logger.debug("Fetching index pattern %s", ip_id)
+    if not es_index:
+        es_index = ".kibana"
+
+    elastic = ElasticSearch(elastic_url, es_index)
+
+    ip_json = get_index_pattern_json(elastic, ip_id)
+
+    index_pattern = {"id": ip_id,
+                     "value": ip_json}
+
+    return index_pattern
 
 def fetch_dashboard(elastic_url, dash_id, es_index=None):
     """
@@ -955,13 +1029,14 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
             export_folder = os.path.dirname(export_file)
 
             for index_pattern in index_patterns:
-                export_file_index = os.path.join(export_folder, index_pattern['id'] + "-index-pattern.json")
-                index_pattern_importable = {"index_patterns":[index_pattern]}
 
+                export_file_index = os.path.join(export_folder, index_pattern['id'] + "-index-pattern.json")
                 if os.path.isfile(export_file_index):
                     logging.info("%s exists. Remove it before running.", export_file_index)
                     sys.exit(0)
 
+                index_pattern['value'][RELEASE_DATE] = dt.utcnow().isoformat()
+                index_pattern_importable = {"index_patterns": [index_pattern]}
                 with open(export_file_index, 'w') as f:
                     f.write(json.dumps(index_pattern_importable, indent=4, sort_keys=True))
 
