@@ -781,12 +781,14 @@ def import_dashboard(elastic_url, import_file, es_index=None,
 
     if json_to_import is None:
         logger.error("Can not find a valid JSON in: %s", import_file)
-        sys.exit(1)
+        raise RuntimeError("Can not find a valid JSON in: %s" % import_file)
 
     if 'dashboard' not in json_to_import and 'index_patterns' not in json_to_import:
         logger.error("Wrong file format (can't find dashboard or index_patterns fields): %s",
                      import_file)
-        sys.exit(1)
+        raise RuntimeError("Wrong file format (can't find dashboard or index_patterns fields): %s" %
+                     import_file)
+
 
     if 'dashboard' in json_to_import:
         logger.debug("Panel detected.")
@@ -1015,7 +1017,7 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
 
     if os.path.isfile(export_file):
         logging.info("%s exists. Remove it before running.", export_file)
-        sys.exit(0)
+        raise RuntimeError("%s exists. Remove it before running." % export_file)
 
     with open(export_file, 'w') as f:
         if not split_index_patterns:
@@ -1033,7 +1035,7 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
                 export_file_index = os.path.join(export_folder, index_pattern['id'] + "-index-pattern.json")
                 if os.path.isfile(export_file_index):
                     logging.info("%s exists. Remove it before running.", export_file_index)
-                    sys.exit(0)
+                    raise RuntimeError("%s exists. Remove it before running." % export_file_index)
 
                 index_pattern['value'][RELEASE_DATE] = dt.utcnow().isoformat()
                 index_pattern_importable = {"index_patterns": [index_pattern]}
