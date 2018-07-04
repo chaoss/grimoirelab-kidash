@@ -96,3 +96,6 @@ if __name__ == '__main__':
 
     except ValueError as value_error:
         logging.error(value_error)
+
+    except RuntimeError as runtime_error:
+        logging.error(runtime_error)
