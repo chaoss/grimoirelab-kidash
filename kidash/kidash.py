@@ -109,7 +109,8 @@ def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False):
             continue
         if data_sources:
             for ds in data_sources:
-                if panel['id'].split("_")[0] == ds:
+
+                if panel['id'].split("_")[0] == ds or panel['title'].split()[0].lower() == ds:
                     clean_panelsJSON.append(panel)
                     break
         else:
@@ -792,6 +793,7 @@ def import_dashboard(elastic_url, import_file, es_index=None,
 
     if 'dashboard' in json_to_import:
         logger.debug("Panel detected.")
+
         dash_id = json_to_import['dashboard'].get('id')
 
         if not dash_id:
