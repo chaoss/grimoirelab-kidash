@@ -65,7 +65,7 @@ def find_item_json(elastic, type_, item_id):
     if elastic_ver < 6:
         item_json_url = elastic.index_url + "/" + type_ + "/" + item_id
     else:
-        if type_ not in item_id:
+        if not item_id.startswith(type_ + ":"):
             # Inside a dashboard ids don't include type_:
             item_id = type_ + ":" + item_id
         # The type_is included in the item_id
@@ -238,7 +238,7 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
     if elastic_ver < 6:
         item_json_url = elastic.index_url + "/" + type_ + "/" + item_id
     else:
-        if type_ not in item_id:
+        if not item_id.startswith(type_ + ":"):
             # Inside a json dashboard ids don't include type_
             item_id = type_ + ":" + item_id
         item_json_url = elastic.index_url + "/doc/" + item_id
