@@ -36,6 +36,8 @@ import sys
 
 from datetime import datetime as dt
 
+import requests
+
 from grimoire_elk.elastic import ElasticSearch
 from grimoire_elk.enriched.utils import grimoire_con
 
@@ -44,6 +46,7 @@ logger = logging.getLogger(__name__)
 requests_ses = grimoire_con()
 
 ES_VER = None
+ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
 HEADERS_JSON = {"Content-Type": "application/json"}
 RELEASE_DATE = 'release_date'
 STUDY_PATTERN = "_study_"
@@ -772,7 +775,7 @@ def is_index_pattern_from_data_sources(index, data_sources):
     return found
 
 
-def import_dashboard(elastic_url, import_file, es_index=None,
+def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
                      data_sources=None, add_vis_studies=False, strict=False):
     """ Import a dashboard from a file
     """
@@ -809,7 +812,7 @@ def import_dashboard(elastic_url, import_file, es_index=None,
             import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'])
 
         if import_json:
-            feed_dashboard(json_to_import, elastic_url, es_index, data_sources, add_vis_studies)
+            feed_dashboard(json_to_import, elastic_url, kibana_url, es_index, data_sources, add_vis_studies)
             logger.info("Dashboard %s imported", get_dashboard_name(import_file))
 
         else:
@@ -835,7 +838,8 @@ def import_dashboard(elastic_url, import_file, es_index=None,
                 import_json = new_release(current_ip, index_pattern)
 
             if import_json:
-                feed_dashboard({"index_patterns": [index_pattern]}, elastic_url, es_index, data_sources, add_vis_studies)
+                feed_dashboard({"index_patterns": [index_pattern]}, elastic_url, kibana_url,
+                               es_index, data_sources, add_vis_studies)
                 logger.info("Index pattern %s from %s imported", ip_id, get_index_patterns_name(import_file))
 
             else:
@@ -875,7 +879,71 @@ def new_release(current_item, item_to_import):
     return is_new
 
 
-def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
+def create_kibana_index(kibana_url):
+    """
+    Force the creation of the kibana index using the kibana API
+    :param kibana_url: Kibana URL
+    :return:
+    """
+
+    def set_kibana_setting(endpoint_url, data_value):
+
+        set_ok = False
+
+        try:
+            res = requests_ses.post(endpoint_url, headers=ES6_HEADER,
+                                    data=json.dumps(data_value), verify=False)
+            res.raise_for_status()
+            # With Search guard if the auth is invalid the URL is redirected to the login
+            # We need to detect that and record it as an error
+            if res.history and res.history[0].is_redirect:
+                logging.error("Problems with search guard authentication %s" % endpoint_url)
+            else:
+                set_ok = True
+        except requests.exceptions.HTTPError:
+            logging.error("Impossible to set %s: %s", endpoint_url, str(res.json()))
+
+        return set_ok
+
+
+    kibana_settings_url = kibana_url + '/api/kibana/settings'
+
+    # Configure the default index with the default value in Kibana
+    # If the kibana index does not exists, it is created by Kibana
+    endpoint = 'defaultIndex'
+    data_value = {"value": None}
+    endpoint_url = kibana_settings_url + '/' + endpoint
+
+    return set_kibana_setting(endpoint_url, data_value)
+
+
+
+def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
+    """
+    Check if kibana index already exists and if not, create it
+
+    :param es_url: Elasticsearch URL with kibana
+    :param kibana_url: Kibana URL
+    :param kibana_index: index with kibana information
+    :return:
+    """
+
+    kibana_index_ok = False
+    kibana_index_url = es_url + "/" + kibana_index
+
+    try:
+        res = requests_ses.get(kibana_index_url, verify=False)
+        res.raise_for_status()
+        kibana_index_ok = True
+    except:
+        logging.info("%s does not exist. Creating it." % kibana_index_url)
+        if create_kibana_index(kibana_url):
+            kibana_index_ok = True
+
+    return kibana_index_ok
+
+
+def feed_dashboard(dashboard, elastic_url, kibana_url, es_index=None, data_sources=None,
                    add_vis_studies=False):
     """ Import a dashboard. If data_sources are defined, just include items
         for this data source.
@@ -883,6 +951,10 @@ def feed_dashboard(dashboard, elastic_url, es_index=None, data_sources=None,
 
     if not es_index:
         es_index = ".kibana"
+
+    # In Kibana >= 6.1 the index could not exists
+    if not check_kibana_index(elastic_url, kibana_url, es_index):
+        raise RuntimeError("Kibana checks have failed")
 
     elastic = ElasticSearch(elastic_url, es_index)
 
