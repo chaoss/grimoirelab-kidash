@@ -56,6 +56,9 @@ def get_params_parser_create_dash():
     parser.add_argument("--data-sources", nargs='+', dest="data_sources", help="Data sources to be included")
     parser.add_argument("--add-vis-studies", dest="add_vis_studies",
                         action='store_true', help="Include visualizations for studies")
+    parser.add_argument("--kibana-url", dest="kibana_url", default="http://localhost:5601",
+                        help="Kibana URL (http://localhost:5601 by default)")
+
 
     return parser
 
@@ -80,7 +83,7 @@ if __name__ == '__main__':
 
     try:
         if ARGS.import_file:
-            import_dashboard(ARGS.elastic_url, ARGS.import_file, ARGS.kibana_index,
+            import_dashboard(ARGS.elastic_url, ARGS.kibana_url, ARGS.import_file, ARGS.kibana_index,
                              ARGS.data_sources, ARGS.add_vis_studies, ARGS.strict)
         elif ARGS.export_file:
             if ARGS.dashboard:
