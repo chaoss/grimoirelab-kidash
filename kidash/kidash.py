@@ -887,11 +887,6 @@ def create_kibana_index(kibana_url):
     """
 
     def set_kibana_setting(endpoint_url, data_value):
-        # Disable kibiter 6 configuration
-        if True:
-            logger.error("Kibiter 6 configuration is temporarily disabled")
-            return True
-
         set_ok = False
 
         try:
