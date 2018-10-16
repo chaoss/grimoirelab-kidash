@@ -157,7 +157,8 @@ def fix_dash_bool_filters(dash_json):
         meta_saved =  json.loads(dash_json["kibanaSavedObjectMeta"]["searchSourceJSON"])
         if 'filter' in meta_saved:
             for filter_ in meta_saved['filter']:
-                if 'match' in filter_['query']:
+                query = filter_.get('query')
+                if query and 'match' in query:
                     match = filter_['query']['match']
                     for field in match:
                         if match[field]['type'] == 'phrase':
