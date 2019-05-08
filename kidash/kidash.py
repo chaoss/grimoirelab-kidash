@@ -92,7 +92,7 @@ def find_item_json(elastic, type_, item_id):
     return item_json
 
 
-def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False):
+def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False, viz_titles=None):
     """ Remove all items that are not from the data sources or that are studies"""
 
     if data_sources:
@@ -113,7 +113,9 @@ def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False):
         if data_sources:
             for ds in data_sources:
 
-                if panel['id'].split("_")[0] == ds or panel['title'].split()[0].lower() == ds:
+                if panel['id'].split("_")[0] == ds or\
+                   panel['title'].split()[0].lower() == ds or\
+                   viz_titles[panel['id']].split("_")[0] == ds:
                     clean_panelsJSON.append(panel)
                     break
         else:
@@ -211,7 +213,7 @@ def add_vis_style(item_json):
 
 
 def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
-                     add_vis_studies=False):
+                     add_vis_studies=False, viz_titles=None):
     """ Import an item in Elasticsearch  """
     elastic_ver = find_elasticsearch_version(elastic)
 
@@ -222,7 +224,7 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
                                         add_vis_studies=add_vis_studies)
     if data_sources:
         if type_ == 'dashboard':
-            item_json = clean_dashboard(item_json, data_sources, add_vis_studies)
+            item_json = clean_dashboard(item_json, data_sources, add_vis_studies, viz_titles)
         if type_ == 'search':
             if not is_search_from_data_sources(item_json, data_sources):
                 logger.debug("Search %s not for %s. Not included.",
@@ -959,8 +961,18 @@ def feed_dashboard(dashboard, elastic_url, kibana_url, es_index=None, data_sourc
     elastic = ElasticSearch(elastic_url, es_index)
 
     if 'dashboard' in dashboard:
+        # Get viz titles because the are needed to check what items must be
+        # excluded by data source name in case that option is enabled
+        viz_titles = {}
+        if 'visualizations' in dashboard:
+            for visualization in dashboard['visualizations']:
+                viz_id = visualization['id']
+                viz_title = visualization['value']['title']
+                viz_titles[viz_id] = viz_title
+
         import_item_json(elastic, "dashboard", dashboard['dashboard']['id'],
-                        dashboard['dashboard']['value'], data_sources, add_vis_studies)
+                         dashboard['dashboard']['value'], data_sources, add_vis_studies,
+                         viz_titles=viz_titles)
 
     if 'searches' in dashboard:
         for search in dashboard['searches']:
