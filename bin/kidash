@@ -27,10 +27,15 @@ import sys
 
 from requests import HTTPError
 
+# Quick fix for avoiding weird warnings
+# https://github.com/chaoss/grimoirelab-sirmordred/issues/192
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
 from grimoire_elk.raw.elastic import ElasticOcean
 from grimoire_elk.utils import config_logging
 from kidash.kidash import import_dashboard, export_dashboard, list_dashboards
-
 
 def get_params_parser_create_dash():
     """Parse command line arguments"""
