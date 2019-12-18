@@ -29,24 +29,71 @@ import os
 import dateutil
 import os.path
 import pkgutil
-import sys
 
 from datetime import datetime as dt
 
 import requests
+import urllib3
 
-from grimoire_elk.elastic import ElasticSearch
-from grimoire_elk.enriched.utils import grimoire_con
 
 logger = logging.getLogger(__name__)
-
-requests_ses = grimoire_con()
 
 ES_VER = None
 ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
 HEADERS_JSON = {"Content-Type": "application/json"}
 RELEASE_DATE = 'release_date'
 STUDY_PATTERN = "_study_"
+
+BACKOFF_FACTOR = 0.2
+MAX_RETRIES = 21
+MAX_RETRIES_ON_REDIRECT = 5
+MAX_RETRIES_ON_READ = 8
+MAX_RETRIES_ON_CONNECT = 21
+STATUS_FORCE_LIST = [408, 409, 429, 502, 503, 504]
+
+
+def grimoire_con(insecure=True, conn_retries=MAX_RETRIES_ON_CONNECT, total=MAX_RETRIES):
+    conn = requests.Session()
+    retries = urllib3.util.Retry(total=total, connect=conn_retries, read=MAX_RETRIES_ON_READ,
+                                 redirect=MAX_RETRIES_ON_REDIRECT, backoff_factor=BACKOFF_FACTOR,
+                                 method_whitelist=False, status_forcelist=STATUS_FORCE_LIST)
+    adapter = requests.adapters.HTTPAdapter(max_retries=retries)
+    conn.mount('http://', adapter)
+    conn.mount('https://', adapter)
+
+    if insecure:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        conn.verify = False
+
+    return conn
+
+
+requests_ses = grimoire_con()
+
+
+class ElasticSearch:
+
+    def __init__(self, url, index):
+
+        self.url = url
+        self.index = index
+
+        self.index_url = self.url + "/" + self.index
+
+        self.requests = grimoire_con(True)
+
+        res = self.requests.get(self.index_url)
+
+        headers = {"Content-Type": "application/json"}
+        if res.status_code != 200:
+            # Index does no exists
+            r = self.requests.put(self.index_url, headers=headers)
+            if r.status_code != 200:
+                logger.error("Can't create index {} ({})".format(
+                             self.index, r.status_code))
+                raise Exception
+            else:
+                logger.info("Created index {}".format(self.index))
 
 
 def find_elasticsearch_version(elastic):
