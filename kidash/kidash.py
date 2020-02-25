@@ -28,7 +28,6 @@ import os
 
 import dateutil
 import os.path
-import pkgutil
 
 from datetime import datetime as dt
 
@@ -167,6 +166,7 @@ def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False, viz_tit
     dash_json_clean['panelsJSON'] = json.dumps(clean_panelsJSON)
 
     return dash_json_clean
+
 
 def fix_dashboard_heights(item_json):
     """ In vis of height 1 increase it to 2
@@ -324,14 +324,14 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
 
             logger.debug("`.kibana` mapping updated for dashboard and index-pattern objects.")
 
-            #retry uploading panel
+            # retry uploading panel
             res = requests_ses.post(item_json_url, data=json.dumps(item_json),
                                     verify=False, headers=headers)
-
 
     res.raise_for_status()
 
     return item_json
+
 
 def put_release_date_mapping(elastic):
     """Adds mapping for `release_date` field to .kibana index in Kibana 6"""
@@ -359,6 +359,7 @@ def put_release_date_mapping(elastic):
     url = elastic.index_url + "/_mapping/doc"
     return requests_ses.put(url, data=mapping,
                             verify=False, headers=HEADERS_JSON)
+
 
 def exists_dashboard(elastic_url, dash_id, es_index=None):
     """ Check if a dashboard exists """
@@ -417,7 +418,7 @@ def create_search(elastic_url, dashboard, index_pattern, es_index=None):
         :param elastic_url: URL for ElasticSearch (ES) server
         :param dashboard: kibana dashboard to be used as template
         :param enrich_index: ES enriched index used in the new dashboard
-
+        :param es_index: kibana index
     """
 
     search_id = None
@@ -518,7 +519,7 @@ def create_index_pattern(elastic_url, dashboard, enrich_index, es_index=None):
         :param elastic_url: URL for ElasticSearch (ES) server
         :param dashboard: kibana dashboard to be used as template
         :param enrich_index: ES enriched index used in the new dashboard
-
+        :param es_index: kibana index
     """
 
     index_pattern = None
@@ -712,31 +713,20 @@ def read_panel_file(panel_file):
                 None if not found or wrong format
     """
 
-    if os.path.isfile(panel_file):
+    try:
         logger.debug("Reading panel from directory: %s", panel_file)
         with open(panel_file, 'r') as f:
             kibana_str = f.read()
-    else:
-        try:
-            logger.debug("Reading panel from module panels")
-            # Next is just a hack for files with "expected" prefix
-            if panel_file.startswith('panels/json/'):
-                module_file = panel_file[len('panels/json/'):]
-            else:
-                module_file = panel_file
-            kibana_bytes = pkgutil.get_data('panels', 'json' + '/'
-                                            + module_file)
-            kibana_str = kibana_bytes.decode(encoding='utf8')
-        except (ImportError, FileNotFoundError, AttributeError):
-            logger.error("Panel not found (not in directory, "
-                         + "no panels module): %s",
-                         panel_file)
-            return None
+    except FileNotFoundError:
+        logger.error("Panel not found (not in directory, "
+                     + "no panels module): %s",
+                     panel_file)
+        return None
 
     try:
         kibana_dict = json.loads(kibana_str)
     except ValueError:
-        logger.error("Wrong file format (not JSON): %s", module_file)
+        logger.error("Wrong file format (not JSON): %s", panel_file)
         return None
     return kibana_dict
 
@@ -753,6 +743,7 @@ def get_dashboard_name(panel_file):
         logger.error("Wrong panel format (can't find 'dashboard' or 'index_patterns' fields): %s",
                      panel_file)
     return dash_name
+
 
 def get_index_patterns_name(panel_file):
     """
@@ -772,6 +763,7 @@ def get_index_patterns_name(panel_file):
         logger.error("Wrong panel format (can't find 'index_patterns' fields): %s",
                      panel_file)
     return index_patterns_name
+
 
 def is_search_from_data_sources(search, data_sources):
     found = False
@@ -840,7 +832,6 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
         raise RuntimeError("Wrong file format (can't find dashboard or index_patterns fields): %s" %
                      import_file)
 
-
     if 'dashboard' in json_to_import:
         logger.debug("Panel detected.")
 
@@ -864,7 +855,7 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
 
         else:
             logger.warning("Dashboard %s not imported from %s. Newer or equal version found in Kibana.",
-                        dash_id, import_file)
+                           dash_id, import_file)
 
     elif 'index_patterns' in json_to_import:
         logger.debug("Index-Pattern detected.")
@@ -951,7 +942,6 @@ def create_kibana_index(kibana_url):
 
         return set_ok
 
-
     kibana_settings_url = kibana_url + '/api/kibana/settings'
 
     # Configure the default index with the default value in Kibana
@@ -961,7 +951,6 @@ def create_kibana_index(kibana_url):
     endpoint_url = kibana_settings_url + '/' + endpoint
 
     return set_kibana_setting(endpoint_url, data_value)
-
 
 
 def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
@@ -1068,6 +1057,7 @@ def fetch_index_pattern(elastic_url, ip_id, es_index=None):
 
     return index_pattern
 
+
 def fetch_dashboard(elastic_url, dash_id, es_index=None):
     """
     Fetch a dashboard JSON definition from Kibana and return it.
@@ -1173,7 +1163,6 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
                     f.write(json.dumps(index_pattern_importable, indent=4, sort_keys=True))
 
 
-
 def export_dashboard(elastic_url, dash_id, export_file, es_index=None, split_index_patterns=False):
     """
     Export a dashboard from Kibana to a file in JSON format. If split_index_patterns is defined it will
@@ -1184,7 +1173,6 @@ def export_dashboard(elastic_url, dash_id, export_file, es_index=None, split_ind
     :param export_file: name of the file in which to export the dashboard
     :param es_index: name of the Kibana index
     :param split_index_patterns: store the index patterns in separate files
-    :return:
     """
 
     logger.debug("Exporting dashboard %s to %s", dash_id, export_file)
