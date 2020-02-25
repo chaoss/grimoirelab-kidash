@@ -69,7 +69,6 @@ setup(name="kidash",
       test_suite='tests',
       scripts=["bin/kidash"],
       install_requires=['python-dateutil',
-                        'grimoirelab-panels>=0.0.7',
                         'requests==2.21.0',
                         'urllib3==1.24.3'
                         ],
