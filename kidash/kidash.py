@@ -34,6 +34,7 @@ from datetime import datetime as dt
 import requests
 import urllib3
 
+from kidash.clients.saved_objects import SavedObjects
 
 logger = logging.getLogger(__name__)
 
@@ -95,42 +96,14 @@ class ElasticSearch:
                 logger.info("Created index {}".format(self.index))
 
 
-def find_elasticsearch_version(elastic):
-    global ES_VER
-    if not ES_VER:
-        res = requests_ses.get(elastic.url)
-        main_ver = res.json()['version']['number'].split(".")[0]
-        ES_VER = int(main_ver)
-    return ES_VER
-
-
-def find_item_json(elastic, type_, item_id):
+def find_item_json(kibana_url, type_, item_id):
     """ Find and item (dashboard, vis, search, index pattern) using its id """
-    elastic_ver = find_elasticsearch_version(elastic)
 
-    if elastic_ver < 6:
-        item_json_url = elastic.index_url + "/" + type_ + "/" + item_id
-    else:
-        if not item_id.startswith(type_ + ":"):
-            # Inside a dashboard ids don't include type_:
-            item_id = type_ + ":" + item_id
-        # The type_is included in the item_id
-        item_json_url = elastic.index_url + "/doc/" + item_id
-
-    res = requests_ses.get(item_json_url, verify=False)
-    if res.status_code == 200 and res.status_code == 404:
-        res.raise_for_status()
-
-    item_json = res.json()
-
-    if "_source" not in item_json:
-        logger.debug("Can not find type %s item %s", type_, item_id)
-        item_json = {}
-    else:
-        if elastic_ver < 6:
-            item_json = item_json["_source"]
-        else:
-            item_json = item_json["_source"][type_]
+    item_json = {}
+    saved_objs = SavedObjects(kibana_url)
+    obj = saved_objs.get_object(type_, item_id)
+    if obj:
+        item_json = obj['attributes']
 
     return item_json
 
@@ -256,11 +229,9 @@ def add_vis_style(item_json):
     return item_json
 
 
-def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
+def import_item_json(kibana_url, type_, item_id, item_json, data_sources=None,
                      add_vis_studies=False, viz_titles=None):
     """ Import an item in Elasticsearch  """
-    elastic_ver = find_elasticsearch_version(elastic)
-
     if not add_vis_studies:
         if type_ == 'dashboard':
             # Clean ths vis related to studies
@@ -285,126 +256,57 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
                              item_id, data_sources)
                 return
 
-    if elastic_ver < 6:
-        item_json_url = elastic.index_url + "/" + type_ + "/" + item_id
+    if type_ == 'dashboard':
+        # Bool filters value must be true/false no 1/0 in es6
+        item_json = fix_dash_bool_filters(item_json)
+        # Vis height of 1 is too small for kibana6
+        item_json = fix_dashboard_heights(item_json)
+
+    if type_ == 'visualization':
+        # Metric vis includes in es6 new params for the style
+        item_json = add_vis_style(item_json)
+
+    item_json.pop('release_date', None)
+
+    saved_objects = SavedObjects(kibana_url)
+
+    obj = saved_objects.get_object(type_, item_id)
+    if obj:
+        saved_objects.update_object(type_, item_id, item_json)
     else:
-        if not item_id.startswith(type_ + ":"):
-            # Inside a json dashboard ids don't include type_
-            item_id = type_ + ":" + item_id
-        item_json_url = elastic.index_url + "/doc/" + item_id
-
-        if type_ == 'dashboard':
-            # Bool filters value must be true/false no 1/0 in es6
-            item_json = fix_dash_bool_filters(item_json)
-            # Vis height of 1 is too small for kibana6
-            item_json = fix_dashboard_heights(item_json)
-
-        if type_ == 'visualization':
-            # Metric vis includes in es6 new params for the style
-            item_json = add_vis_style(item_json)
-
-        item_json = {"type": type_, type_: item_json}
-
-    headers = HEADERS_JSON
-    res = requests_ses.post(item_json_url, data=json.dumps(item_json),
-                            verify=False, headers=headers)
-
-    # Check if there is a problem with `release_date` field mapping
-    # In Kibana 6 we need to add the corresponding mapping to .kibana index
-    if res.status_code == 400:
-        res_content = res.json()
-        if res_content['error']['type'] == "strict_dynamic_mapping_exception" and \
-                RELEASE_DATE in res_content['error']['reason']:
-
-            logger.debug("Field `%s` not present in `.kibana` mapping.", RELEASE_DATE)
-
-            # Update .kibana mapping
-            res = put_release_date_mapping(elastic)
-            res.raise_for_status()
-
-            logger.debug("`.kibana` mapping updated for dashboard and index-pattern objects.")
-
-            # retry uploading panel
-            res = requests_ses.post(item_json_url, data=json.dumps(item_json),
-                                    verify=False, headers=headers)
-
-    res.raise_for_status()
+        saved_objects.create_object(type_, item_json, obj_id=item_id)
 
     return item_json
 
 
-def put_release_date_mapping(elastic):
-    """Adds mapping for `release_date` field to .kibana index in Kibana 6"""
-    mapping = """
-    {
-      "properties": {
-        "dashboard": {
-          "properties": {
-            "release_date": {
-              "type": "date"
-            }
-          }
-        },
-        "index-pattern": {
-          "properties": {
-            "release_date": {
-              "type": "date"
-            }
-          }
-        }
-      }
-    }
-    """
-
-    url = elastic.index_url + "/_mapping/doc"
-    return requests_ses.put(url, data=mapping,
-                            verify=False, headers=HEADERS_JSON)
-
-
-def exists_dashboard(elastic_url, dash_id, es_index=None):
-    """ Check if a dashboard exists """
-    exists = False
-
-    if not es_index:
-        es_index = ".kibana"
-    elastic = ElasticSearch(elastic_url, es_index)
-    dash_data = get_dashboard_json(elastic, dash_id)
-    if 'panelsJSON' in dash_data:
-        exists = True
-
-    return exists
-
-
-def get_dashboard_json(elastic, dashboard_id):
-    dash_json = find_item_json(elastic, "dashboard", dashboard_id)
+def get_dashboard_json(kibana_url, dashboard_id):
+    dash_json = find_item_json(kibana_url, "dashboard", dashboard_id)
 
     return dash_json
 
 
-def get_vis_json(elastic, vis_id):
-    vis_json = find_item_json(elastic, "visualization", vis_id)
+def get_vis_json(kibana_url, vis_id):
+    vis_json = find_item_json(kibana_url, "visualization", vis_id)
 
     return vis_json
 
 
-def get_search_json(elastic, search_id):
-    search_json = find_item_json(elastic, "search", search_id)
+def get_search_json(kibana_url, search_id):
+    search_json = find_item_json(kibana_url, "search", search_id)
 
     return search_json
 
 
-def get_index_pattern_json(elastic, index_pattern_id):
-    index_pattern_json = find_item_json(elastic, "index-pattern",
+def get_index_pattern_json(kibana_url, index_pattern_id):
+    index_pattern_json = find_item_json(kibana_url, "index-pattern",
                                         index_pattern_id)
 
     return index_pattern_json
 
 
-def get_search_from_vis(elastic, vis):
+def get_search_from_vis(kibana_url, vis):
     search_id = None
-    vis_json = get_vis_json(elastic, vis)
-    if not vis_json:
-        search_id
+    vis_json = get_vis_json(kibana_url, vis)
     # The index pattern could be in search or in state
     # First search for it in saved search
     if "savedSearchId" in vis_json:
@@ -424,9 +326,9 @@ def get_index_pattern_from_meta(meta_data):
     return index
 
 
-def get_index_pattern_from_search(elastic, search):
+def get_index_pattern_from_search(kibana_url, search):
     index_pattern = None
-    search_json = get_search_json(elastic, search)
+    search_json = get_search_json(kibana_url, search)
     if not search_json:
         return
     if "kibanaSavedObjectMeta" in search_json:
@@ -435,15 +337,15 @@ def get_index_pattern_from_search(elastic, search):
     return index_pattern
 
 
-def get_index_pattern_from_vis(elastic, vis):
+def get_index_pattern_from_vis(kibana_url, vis):
     index_pattern = None
-    vis_json = get_vis_json(elastic, vis)
+    vis_json = get_vis_json(kibana_url, vis)
     if not vis_json:
         return
     # The index pattern could be in search or in state
     # First search for it in saved search
     if "savedSearchId" in vis_json:
-        search_json = find_item_json(elastic, "search",
+        search_json = find_item_json(kibana_url, "search",
                                      vis_json["savedSearchId"])
         index_pattern = \
             get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
@@ -562,8 +464,7 @@ def is_index_pattern_from_data_sources(index, data_sources):
     return found
 
 
-def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
-                     data_sources=None, add_vis_studies=False, strict=False):
+def import_dashboard(kibana_url, import_file, data_sources=None, add_vis_studies=False, strict=False):
     """ Import a dashboard from a file
     """
 
@@ -578,7 +479,7 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
         logger.error("Wrong file format (can't find dashboard or index_patterns fields): %s",
                      import_file)
         raise RuntimeError("Wrong file format (can't find dashboard or index_patterns fields): %s" %
-                     import_file)
+                           import_file)
 
     if 'dashboard' in json_to_import:
         logger.debug("Panel detected.")
@@ -591,16 +492,15 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
         import_json = True
         if strict:
             logger.debug("Retrieving dashboard %s to check release date.", dash_id)
-            current_panel = fetch_dashboard(elastic_url, dash_id, es_index)
+            current_panel = fetch_dashboard(kibana_url, dash_id)
 
             # If there is no current release, that means current dashboard was created before adding release_date field
             # or panel is new in this ElasticSearch server, then import dashboard
             import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'])
 
         if import_json:
-            feed_dashboard(json_to_import, elastic_url, kibana_url, es_index, data_sources, add_vis_studies)
+            feed_dashboard(json_to_import, kibana_url, data_sources, add_vis_studies)
             logger.info("Dashboard %s imported", get_dashboard_name(import_file))
-
         else:
             logger.warning("Dashboard %s not imported from %s. Newer or equal version found in Kibana.",
                            dash_id, import_file)
@@ -617,15 +517,14 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
             import_json = True
             if strict:
                 logger.debug("Retrieving index pattern %s to check release date.", ip_id)
-                current_ip = fetch_index_pattern(elastic_url, ip_id, es_index)
+                current_ip = fetch_index_pattern(kibana_url, ip_id)
 
                 # If there is no current release, that means current index pattern was created before adding
                 # release_date field or index pattern is new in this ElasticSearch server, then import it
                 import_json = new_release(current_ip, index_pattern)
 
             if import_json:
-                feed_dashboard({"index_patterns": [index_pattern]}, elastic_url, kibana_url,
-                               es_index, data_sources, add_vis_studies)
+                feed_dashboard({"index_patterns": [index_pattern]}, kibana_url, data_sources, add_vis_studies)
                 logger.info("Index pattern %s from %s imported", ip_id, get_index_patterns_name(import_file))
 
             else:
@@ -710,7 +609,6 @@ def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
     :param kibana_index: index with kibana information
     :return:
     """
-
     kibana_index_ok = False
     kibana_index_url = es_url + "/" + kibana_index
 
@@ -726,20 +624,11 @@ def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
     return kibana_index_ok
 
 
-def feed_dashboard(dashboard, elastic_url, kibana_url, es_index=None, data_sources=None,
+def feed_dashboard(dashboard, kibana_url, data_sources=None,
                    add_vis_studies=False):
     """ Import a dashboard. If data_sources are defined, just include items
         for this data source.
     """
-
-    if not es_index:
-        es_index = ".kibana"
-
-    # In Kibana >= 6.1 the index could not exists
-    if not check_kibana_index(elastic_url, kibana_url, es_index):
-        raise RuntimeError("Kibana checks have failed")
-
-    elastic = ElasticSearch(elastic_url, es_index)
 
     if 'dashboard' in dashboard:
         # Get viz titles because the are needed to check what items must be
@@ -751,20 +640,20 @@ def feed_dashboard(dashboard, elastic_url, kibana_url, es_index=None, data_sourc
                 viz_title = visualization['value']['title']
                 viz_titles[viz_id] = viz_title
 
-        import_item_json(elastic, "dashboard", dashboard['dashboard']['id'],
+        import_item_json(kibana_url, "dashboard", dashboard['dashboard']['id'],
                          dashboard['dashboard']['value'], data_sources, add_vis_studies,
                          viz_titles=viz_titles)
 
     if 'searches' in dashboard:
         for search in dashboard['searches']:
-            import_item_json(elastic, "search", search['id'], search['value'],
+            import_item_json(kibana_url, "search", search['id'], search['value'],
                              data_sources)
 
     if 'index_patterns' in dashboard:
         for index in dashboard['index_patterns']:
             if not data_sources or \
                     is_index_pattern_from_data_sources(index, data_sources):
-                import_item_json(elastic, "index-pattern",
+                import_item_json(kibana_url, "index-pattern",
                                  index['id'], index['value'])
             else:
                 logger.debug("Index pattern %s not for %s. Not included.",
@@ -775,30 +664,25 @@ def feed_dashboard(dashboard, elastic_url, kibana_url, es_index=None, data_sourc
             if not add_vis_studies and is_vis_study(vis):
                 logger.debug("Vis %s is for an study. Not included.", vis['id'])
             elif not data_sources or is_vis_from_data_sources(vis, data_sources):
-                import_item_json(elastic, "visualization",
+                import_item_json(kibana_url, "visualization",
                                  vis['id'], vis['value'])
             else:
                 logger.debug("Vis %s not for %s. Not included.",
                              vis['id'], data_sources)
 
 
-def fetch_index_pattern(elastic_url, ip_id, es_index=None):
+def fetch_index_pattern(kibana_url, ip_id):
     """
     Fetch an index pattern JSON definition from Kibana and return it.
 
-    :param elastic_url: Elasticsearch URL
+    :param kibana_url: Kibana URL
     :param ip_id: index pattern identifier
     :param es_index: kibana index
     :return: a dict with index pattern data
     """
 
     logger.debug("Fetching index pattern %s", ip_id)
-    if not es_index:
-        es_index = ".kibana"
-
-    elastic = ElasticSearch(elastic_url, es_index)
-
-    ip_json = get_index_pattern_json(elastic, ip_id)
+    ip_json = get_index_pattern_json(kibana_url, ip_id)
 
     index_pattern = {"id": ip_id,
                      "value": ip_json}
@@ -806,13 +690,12 @@ def fetch_index_pattern(elastic_url, ip_id, es_index=None):
     return index_pattern
 
 
-def fetch_dashboard(elastic_url, dash_id, es_index=None):
+def fetch_dashboard(kibana_url, dash_id):
     """
     Fetch a dashboard JSON definition from Kibana and return it.
 
-    :param elastic_url: Elasticsearch URL
+    :param kibana_url: Kibana URL
     :param dash_id: dashboard identifier
-    :param es_index: kibana index
     :return: a dict with the dashboard data (vis, searches and index patterns)
     """
 
@@ -827,13 +710,8 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
     index_ids_done = []
 
     logger.debug("Fetching dashboard %s", dash_id)
-    if not es_index:
-        es_index = ".kibana"
-
-    elastic = ElasticSearch(elastic_url, es_index)
-
     kibana["dashboard"] = {"id": dash_id,
-                           "value": get_dashboard_json(elastic, dash_id)}
+                           "value": get_dashboard_json(kibana_url, dash_id)}
 
     if "panelsJSON" not in kibana["dashboard"]["value"]:
         # The dashboard is empty. No visualizations included.
@@ -844,21 +722,21 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
         logger.debug("Analyzing panel %s (%s)", panel['id'], panel['type'])
         if panel['type'] in ['visualization']:
             vis_id = panel['id']
-            vis_json = get_vis_json(elastic, vis_id)
+            vis_json = get_vis_json(kibana_url, vis_id)
             kibana["visualizations"].append({"id": vis_id, "value": vis_json})
-            search_id = get_search_from_vis(elastic, vis_id)
+            search_id = get_search_from_vis(kibana_url, vis_id)
             if search_id and search_id not in search_ids_done:
                 search_ids_done.append(search_id)
                 kibana["searches"].append(
                     {"id": search_id,
-                     "value": get_search_json(elastic, search_id)}
+                     "value": get_search_json(kibana_url, search_id)}
                     )
-            index_pattern_id = get_index_pattern_from_vis(elastic, vis_id)
+            index_pattern_id = get_index_pattern_from_vis(kibana_url, vis_id)
             if index_pattern_id and index_pattern_id not in index_ids_done:
                 index_ids_done.append(index_pattern_id)
                 kibana["index_patterns"].append(
                     {"id": index_pattern_id,
-                     "value": get_index_pattern_json(elastic,
+                     "value": get_index_pattern_json(kibana_url,
                                                      index_pattern_id)}
                     )
         elif panel['type'] in ['search']:
@@ -866,15 +744,15 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
             search_id = panel['id']
             kibana["searches"].append(
                 {"id": search_id,
-                 "value": get_search_json(elastic, search_id)}
+                 "value": get_search_json(kibana_url, search_id)}
                 )
-            index_pattern_id = get_index_pattern_from_search(elastic,
+            index_pattern_id = get_index_pattern_from_search(kibana_url,
                                                              search_id)
             if index_pattern_id and index_pattern_id not in index_ids_done:
                 index_ids_done.append(index_pattern_id)
                 kibana["index_patterns"].append(
                     {"id": index_pattern_id,
-                     "value": get_index_pattern_json(elastic,
+                     "value": get_index_pattern_json(kibana_url,
                                                      index_pattern_id)}
                     )
 
@@ -905,31 +783,25 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
                     logging.info("%s exists. Remove it before running.", export_file_index)
                     raise RuntimeError("%s exists. Remove it before running." % export_file_index)
 
-                index_pattern['value'][RELEASE_DATE] = dt.utcnow().isoformat()
                 index_pattern_importable = {"index_patterns": [index_pattern]}
                 with open(export_file_index, 'w') as f:
                     f.write(json.dumps(index_pattern_importable, indent=4, sort_keys=True))
 
 
-def export_dashboard(elastic_url, dash_id, export_file, es_index=None, split_index_patterns=False):
+def export_dashboard(kibana_url, dash_id, export_file, split_index_patterns=False):
     """
     Export a dashboard from Kibana to a file in JSON format. If split_index_patterns is defined it will
     store the index patterns in separate files.
 
-    :param elastic_url: Elasticsearch URL
+    :param kibana_url: Kibana URL
     :param dash_id: dashboard identifier
     :param export_file: name of the file in which to export the dashboard
-    :param es_index: name of the Kibana index
     :param split_index_patterns: store the index patterns in separate files
     """
 
     logger.debug("Exporting dashboard %s to %s", dash_id, export_file)
 
-    kibana = fetch_dashboard(elastic_url, dash_id, es_index)
-
-    # Add release date to identify this particular version of the panel
-    kibana['dashboard']['value'][RELEASE_DATE] = dt.utcnow().isoformat()
-
+    kibana = fetch_dashboard(kibana_url, dash_id)
     export_dashboard_files(kibana, export_file, split_index_patterns)
 
     logger.debug("Done")
