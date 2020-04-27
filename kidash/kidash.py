@@ -40,8 +40,7 @@ logger = logging.getLogger(__name__)
 
 ES_VER = None
 ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
-HEADERS_JSON = {"Content-Type": "application/json"}
-RELEASE_DATE = 'release_date'
+RELEASE_VERSION = 'version'
 STUDY_PATTERN = "_study_"
 
 BACKOFF_FACTOR = 0.2
@@ -538,27 +537,22 @@ def import_dashboard(kibana_url, import_file, data_sources=None, add_vis_studies
 def new_release(current_item, item_to_import):
     """Check whether a release is newer than another one
 
-    :param current_release:
-    :param import_release:
+    :param current_item:
+    :param item_to_import:
     :return: True if import release is newer than current one
     """
 
-    current_release = current_item['value'].get(RELEASE_DATE)
-    import_release = item_to_import['value'].get(RELEASE_DATE)
+    current_release = current_item['value'].get(RELEASE_VERSION)
+    import_release = item_to_import['value'].get(RELEASE_VERSION)
 
-    logger.debug("Current item release date %s.", current_release)
+    logger.debug("Current item release version %s.", current_release)
 
-    if not import_release:
-        raise ValueError("'" + RELEASE_DATE + "' field not found in item to import.")
-
-    logger.debug("Item to import release date %s.", import_release)
+    logger.debug("Item to import release version %s.", import_release)
 
     is_new = True
     if current_release:
-        import_date = dateutil.parser.parse(import_release)
-        current_date = dateutil.parser.parse(current_release)
 
-        if current_date >= import_date:
+        if current_release >= import_release:
             is_new = False
 
     return is_new
