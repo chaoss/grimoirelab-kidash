@@ -25,7 +25,7 @@ import logging
 
 from requests import HTTPError
 
-from kidash.kidash import import_dashboard, export_dashboard, list_dashboards
+from kidash.kidash import import_dashboard, export_dashboard
 
 
 def get_params_parser_create_dash():
@@ -34,8 +34,8 @@ def get_params_parser_create_dash():
     parser = argparse.ArgumentParser(usage="usage: kidash [options]",
                                      description="Import or Export a Kibana Dashboard")
 
-    parser.add_argument("-e", "--elastic_url", default="http://127.0.0.1:9200",
-                        help="Host with elastic search (default: http://127.0.0.1:9200)")
+    parser.add_argument("-e", dest="kibana_url", default="http://localhost:5601",
+                        help="Kibana URL (http://localhost:5601 by default)")
 
     parser.add_argument("--dashboard", help="Kibana dashboard id to export")
     parser.add_argument("--split-index-patterns", action='store_true',
@@ -44,14 +44,11 @@ def get_params_parser_create_dash():
 
     parser.add_argument("--import", dest="import_file", help="file with the dashboard/index pattern to be imported")
     parser.add_argument("--strict", action="store_true", help="check release date and only import newer panels")
-    parser.add_argument("--kibana", dest="kibana_index", default=".kibana", help="Kibana index name (.kibana default)")
     parser.add_argument("--list", action='store_true', help="list available dashboards")
     parser.add_argument('-g', '--debug', dest='debug', action='store_true')
     parser.add_argument("--data-sources", nargs='+', dest="data_sources", help="Data sources to be included")
     parser.add_argument("--add-vis-studies", dest="add_vis_studies",
                         action='store_true', help="Include visualizations for studies")
-    parser.add_argument("--kibana-url", dest="kibana_url", default="http://localhost:5601",
-                        help="Kibana URL (http://localhost:5601 by default)")
 
 
     return parser
@@ -88,14 +85,10 @@ if __name__ == '__main__':
 
     try:
         if ARGS.import_file:
-            import_dashboard(ARGS.elastic_url, ARGS.kibana_url, ARGS.import_file, ARGS.kibana_index,
-                             ARGS.data_sources, ARGS.add_vis_studies, ARGS.strict)
+            import_dashboard(ARGS.kibana_url, ARGS.import_file, ARGS.data_sources, ARGS.add_vis_studies, ARGS.strict)
         elif ARGS.export_file:
             if ARGS.dashboard:
-                export_dashboard(ARGS.elastic_url, ARGS.dashboard, ARGS.export_file,
-                                 ARGS.kibana_index, ARGS.split_index_patterns)
-        elif ARGS.list:
-            list_dashboards(ARGS.elastic_url, ARGS.kibana_index)
+                export_dashboard(ARGS.kibana_url, ARGS.dashboard, ARGS.export_file, ARGS.split_index_patterns)
 
     except HTTPError as http_error:
         res = http_error.response
