@@ -38,12 +38,12 @@ class SavedObjects(HttpClient):
 
     :param base_url: the Kibana URL
     """
-    API_SAVED_OBJECTS_URL = 'api/saved_objects'
 
     def __init__(self, base_url):
+        base_url = urijoin(base_url, 'api', 'saved_objects')
         super().__init__(base_url)
 
-    def fetch_objs(self, url):
+    def fetch_objs(self):
         """Find an object by its type and title.
 
         :param url: saved_objects endpoint
@@ -58,10 +58,10 @@ class SavedObjects(HttpClient):
 
         while True:
             try:
-                r_json = self.fetch(url, params=params)
+                r_json = self.fetch(self.base_url, params=params)
             except requests.exceptions.HTTPError as error:
                 if error.response.status_code == 500:
-                    logger.warning("Impossible to retrieve object at page %s, url %s", params['page'], url)
+                    logger.warning("Impossible to retrieve object at page %s, url %s", params['page'], self.base_url)
                     params['page'] = params['page'] + 1
                     continue
                 else:
@@ -69,7 +69,7 @@ class SavedObjects(HttpClient):
 
             if 'statusCode' in r_json:
                 logger.error("Impossible to retrieve objects at page %s, url %s, %s",
-                             params['page'], url, r_json['message'])
+                             params['page'], self.base_url, r_json['message'])
                 params['page'] = params['page'] + 1
                 continue
 
@@ -90,7 +90,7 @@ class SavedObjects(HttpClient):
 
         :returns the target object
         """
-        url = urijoin(self.base_url, self.API_SAVED_OBJECTS_URL, obj_type, obj_id)
+        url = urijoin(self.base_url, obj_type, obj_id)
 
         r = None
         try:
@@ -109,7 +109,7 @@ class SavedObjects(HttpClient):
         :param obj_type: type of the target object
         :param obj_id: ID of the target object
         """
-        url = urijoin(self.base_url, self.API_SAVED_OBJECTS_URL, obj_type, obj_id)
+        url = urijoin(self.base_url, obj_type, obj_id)
         try:
             self.delete(url)
             logger.info("Object %s with id %s deleted", obj_type, obj_id)
@@ -129,7 +129,7 @@ class SavedObjects(HttpClient):
 
         :returns the updated object
         """
-        url = urijoin(self.base_url, self.API_SAVED_OBJECTS_URL, obj_type)
+        url = urijoin(self.base_url, obj_type)
         if obj_id:
             url = urijoin(url, obj_id)
 
@@ -158,7 +158,7 @@ class SavedObjects(HttpClient):
 
         :returns the updated object
         """
-        url = urijoin(self.base_url, self.API_SAVED_OBJECTS_URL, obj_type, obj_id)
+        url = urijoin(self.base_url, obj_type, obj_id)
         params = {
             "attributes": attributes
         }

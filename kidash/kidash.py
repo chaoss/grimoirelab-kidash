@@ -27,11 +27,12 @@ import logging
 import os
 import os.path
 
-import requests
-import urllib3
-
 from kidash.clients.saved_objects import SavedObjects
-from kidash.clients.dashboard import Dashboard
+from kidash.clients.dashboard import (Dashboard,
+                                      DASHBOARD,
+                                      INDEX_PATTERN,
+                                      SEARCH,
+                                      VISUALIZATION)
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +41,6 @@ ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
 RELEASE_VERSION = 'version'
 STUDY_PATTERN = "_study_"
 
-VISUALIZATION = "visualization"
-INDEX_PATTERN = "index_pattern"
-SEARCH = "search"
-
-DASHBOARD = "dashboard"
 VISUALIZATIONS = "visualizations"
 INDEX_PATTERNS = "index_patterns"
 SEARCHES = "searches"
@@ -604,13 +600,13 @@ def fetch_dashboard(kibana_url, dash_id):
         obj_type = obj['type']
 
         if obj_type == DASHBOARD:
-            kibana[DASHBOARD] = {'id:': obj_id, 'value': obj}
+            kibana[DASHBOARD] = obj
         elif obj_type == VISUALIZATION:
-            kibana[VISUALIZATIONS].append({'id:': obj_id, 'value': obj})
-        elif obj_type == SEARCHES:
-            kibana[SEARCHES].append({'id:': obj_id, 'value': obj})
+            kibana[VISUALIZATIONS].append(obj)
+        elif obj_type == SEARCH:
+            kibana[SEARCHES].append(obj)
         elif obj_type == INDEX_PATTERN:
-            kibana[INDEX_PATTERNS].append({'id:': obj_id, 'value': obj})
+            kibana[INDEX_PATTERNS].append(obj)
         else:
             logging.info("object %s with type %s ignored.", obj_id, obj_type)
 
@@ -627,7 +623,7 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
         if not split_index_patterns:
             f.write(json.dumps(dash_json, indent=4, sort_keys=True))
         else:
-            index_patterns = dash_json.pop("index_patterns")
+            index_patterns = dash_json.pop(INDEX_PATTERNS)
 
             with open(export_file, 'w') as f:
                 f.write(json.dumps(dash_json, indent=4, sort_keys=True))
@@ -635,7 +631,6 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
             export_folder = os.path.dirname(export_file)
 
             for index_pattern in index_patterns:
-
                 export_file_index = os.path.join(export_folder, index_pattern['id'] + "-index-pattern.json")
                 if os.path.isfile(export_file_index):
                     logging.info("%s exists. Remove it before running.", export_file_index)
@@ -656,10 +651,77 @@ def export_dashboard(kibana_url, dash_id, export_file, split_index_patterns=Fals
     :param export_file: name of the file in which to export the dashboard
     :param split_index_patterns: store the index patterns in separate files
     """
-
     logger.debug("Exporting dashboard %s to %s", dash_id, export_file)
 
     kibana = fetch_dashboard(kibana_url, dash_id)
     export_dashboard_files(kibana, export_file, split_index_patterns)
 
     logger.debug("Done")
+
+
+def list_dashboards(kibana_url):
+    """List the dashboards (title, id and version) present in a kibana
+
+    :param kibana_url: Kibana URL
+    """
+    saved_objs = SavedObjects(kibana_url)
+
+    for page_objs in saved_objs.fetch_objs():
+        for obj in page_objs:
+            if obj['type'] != DASHBOARD:
+                continue
+
+            message = "Dashboard {}, id: {}, version: {}".format(obj['attributes']['title'], obj['id'], obj['version'])
+            logger.info(message)
+
+
+def dump_objects(kibana_url, dump_file):
+    """Dump the content of the .kibana index to a file
+
+    :param kibana_url: Kibana URL
+    :param dump_file: name of the file where to dump the .kibana content
+    """
+    if os.path.isfile(dump_file):
+        logging.info("%s exists. Remove it before running.", dump_file)
+        return
+
+    logger.info("Dumping started ...")
+    objects = []
+    saved_objs = SavedObjects(kibana_url)
+    for page_objs in saved_objs.fetch_objs():
+        for obj in page_objs:
+            obj['attributes'].pop('release_date', None)
+            objects.append(obj)
+
+        if len(objects) % 20 == 0:
+            logger.info("{} objects collected".format(len(objects)))
+
+    with open(dump_file, 'a+') as f:
+        f.write(json.dumps(objects, sort_keys=True, indent=4))
+
+    logger.info("Dumping ended ...")
+
+
+def upload_objects(kibana_url, upload_file, overwrite=False):
+    """Upload the content of a file to Kibana
+
+    :param kibana_url: Kibana URL
+    :param upload_file: name of the file to upload to kibana
+    :param overwrite: if True overwrite the existing objects
+    """
+    if not os.path.isfile(upload_file):
+        logging.info("%s doesn't exists.", upload_file)
+        return
+
+    saved_objs = SavedObjects(kibana_url)
+    logger.info("Uploading started ... overwrite is {}".format(overwrite))
+    with open(upload_file, 'r') as f:
+        objects = json.loads(f.read())
+        for obj in objects:
+            obj_type = obj['type']
+            obj_attributes = obj['attributes']
+            obj_id = obj['id']
+            saved_objs.create_object(obj_type, obj_attributes, obj_id=obj_id, overwrite=overwrite)
+            logger.info("Object {} uploaded".format(obj_id))
+
+    logger.info("Uploading ended ...")

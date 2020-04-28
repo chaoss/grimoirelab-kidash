@@ -25,7 +25,11 @@ import logging
 
 from requests import HTTPError
 
-from kidash.kidash import import_dashboard, export_dashboard
+from kidash.kidash import (import_dashboard,
+                           export_dashboard,
+                           list_dashboards,
+                           dump_objects,
+                           upload_objects)
 
 
 def get_params_parser_create_dash():
@@ -45,11 +49,13 @@ def get_params_parser_create_dash():
     parser.add_argument("--import", dest="import_file", help="file with the dashboard/index pattern to be imported")
     parser.add_argument("--strict", action="store_true", help="check release date and only import newer panels")
     parser.add_argument("--list", action='store_true', help="list available dashboards")
+    parser.add_argument("--dump", dest="dump_file", help="file to dump the content of the .kibana")
+    parser.add_argument("--upload", dest="upload_file", help="file to be uploaded to Kibana")
+    parser.add_argument("--overwrite", action='store_true', help="overwrite objects")
     parser.add_argument('-g', '--debug', dest='debug', action='store_true')
     parser.add_argument("--data-sources", nargs='+', dest="data_sources", help="Data sources to be included")
     parser.add_argument("--add-vis-studies", dest="add_vis_studies",
                         action='store_true', help="Include visualizations for studies")
-
 
     return parser
 
@@ -58,8 +64,8 @@ def get_params():
     parser = get_params_parser_create_dash()
     args = parser.parse_args()
 
-    if not (args.export_file or args.import_file or args.list):
-        parser.error("--export or --import or --list needed")
+    if not (args.export_file or args.import_file or args.list or args.dump_file or args.upload_file):
+        parser.error("--export or --import or --list or --dump or --upload needed")
     else:
         if args.export_file and not args.dashboard:
             parser.error("--export needs --dashboard")
@@ -89,6 +95,12 @@ if __name__ == '__main__':
         elif ARGS.export_file:
             if ARGS.dashboard:
                 export_dashboard(ARGS.kibana_url, ARGS.dashboard, ARGS.export_file, ARGS.split_index_patterns)
+        elif ARGS.list:
+            list_dashboards(ARGS.kibana_url)
+        elif ARGS.dump_file:
+            dump_objects(ARGS.kibana_url, ARGS.dump_file)
+        elif ARGS.upload_file:
+            upload_objects(ARGS.kibana_url, ARGS.upload_file, ARGS.overwrite)
 
     except HTTPError as http_error:
         res = http_error.response
