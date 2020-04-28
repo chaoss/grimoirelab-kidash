@@ -25,16 +25,13 @@ import json
 import logging
 
 import os
-
-import dateutil
 import os.path
-
-from datetime import datetime as dt
 
 import requests
 import urllib3
 
 from kidash.clients.saved_objects import SavedObjects
+from kidash.clients.dashboard import Dashboard
 
 logger = logging.getLogger(__name__)
 
@@ -43,56 +40,14 @@ ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
 RELEASE_VERSION = 'version'
 STUDY_PATTERN = "_study_"
 
-BACKOFF_FACTOR = 0.2
-MAX_RETRIES = 21
-MAX_RETRIES_ON_REDIRECT = 5
-MAX_RETRIES_ON_READ = 8
-MAX_RETRIES_ON_CONNECT = 21
-STATUS_FORCE_LIST = [408, 409, 429, 502, 503, 504]
+VISUALIZATION = "visualization"
+INDEX_PATTERN = "index_pattern"
+SEARCH = "search"
 
-
-def grimoire_con(insecure=True, conn_retries=MAX_RETRIES_ON_CONNECT, total=MAX_RETRIES):
-    conn = requests.Session()
-    retries = urllib3.util.Retry(total=total, connect=conn_retries, read=MAX_RETRIES_ON_READ,
-                                 redirect=MAX_RETRIES_ON_REDIRECT, backoff_factor=BACKOFF_FACTOR,
-                                 method_whitelist=False, status_forcelist=STATUS_FORCE_LIST)
-    adapter = requests.adapters.HTTPAdapter(max_retries=retries)
-    conn.mount('http://', adapter)
-    conn.mount('https://', adapter)
-
-    if insecure:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        conn.verify = False
-
-    return conn
-
-
-requests_ses = grimoire_con()
-
-
-class ElasticSearch:
-
-    def __init__(self, url, index):
-
-        self.url = url
-        self.index = index
-
-        self.index_url = self.url + "/" + self.index
-
-        self.requests = grimoire_con(True)
-
-        res = self.requests.get(self.index_url)
-
-        headers = {"Content-Type": "application/json"}
-        if res.status_code != 200:
-            # Index does no exists
-            r = self.requests.put(self.index_url, headers=headers)
-            if r.status_code != 200:
-                logger.error("Can't create index {} ({})".format(
-                             self.index, r.status_code))
-                raise Exception
-            else:
-                logger.info("Created index {}".format(self.index))
+DASHBOARD = "dashboard"
+VISUALIZATIONS = "visualizations"
+INDEX_PATTERNS = "index_patterns"
+SEARCHES = "searches"
 
 
 def find_item_json(kibana_url, type_, item_id):
@@ -102,7 +57,7 @@ def find_item_json(kibana_url, type_, item_id):
     saved_objs = SavedObjects(kibana_url)
     obj = saved_objs.get_object(type_, item_id)
     if obj:
-        item_json = obj['attributes']
+        item_json = obj
 
     return item_json
 
@@ -278,39 +233,11 @@ def import_item_json(kibana_url, type_, item_id, item_json, data_sources=None,
     return item_json
 
 
-def get_dashboard_json(kibana_url, dashboard_id):
-    dash_json = find_item_json(kibana_url, "dashboard", dashboard_id)
-
-    return dash_json
-
-
-def get_vis_json(kibana_url, vis_id):
-    vis_json = find_item_json(kibana_url, "visualization", vis_id)
-
-    return vis_json
-
-
-def get_search_json(kibana_url, search_id):
-    search_json = find_item_json(kibana_url, "search", search_id)
-
-    return search_json
-
-
 def get_index_pattern_json(kibana_url, index_pattern_id):
     index_pattern_json = find_item_json(kibana_url, "index-pattern",
                                         index_pattern_id)
 
     return index_pattern_json
-
-
-def get_search_from_vis(kibana_url, vis):
-    search_id = None
-    vis_json = get_vis_json(kibana_url, vis)
-    # The index pattern could be in search or in state
-    # First search for it in saved search
-    if "savedSearchId" in vis_json:
-        search_id = vis_json["savedSearchId"]
-    return search_id
 
 
 def get_index_pattern_from_meta(meta_data):
@@ -323,35 +250,6 @@ def get_index_pattern_from_meta(meta_data):
         if len(mdata["filter"]) > 0:
             index = mdata["filter"][0]["meta"]["index"]
     return index
-
-
-def get_index_pattern_from_search(kibana_url, search):
-    index_pattern = None
-    search_json = get_search_json(kibana_url, search)
-    if not search_json:
-        return
-    if "kibanaSavedObjectMeta" in search_json:
-        index_pattern = \
-            get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
-    return index_pattern
-
-
-def get_index_pattern_from_vis(kibana_url, vis):
-    index_pattern = None
-    vis_json = get_vis_json(kibana_url, vis)
-    if not vis_json:
-        return
-    # The index pattern could be in search or in state
-    # First search for it in saved search
-    if "savedSearchId" in vis_json:
-        search_json = find_item_json(kibana_url, "search",
-                                     vis_json["savedSearchId"])
-        index_pattern = \
-            get_index_pattern_from_meta(search_json["kibanaSavedObjectMeta"])
-    elif "kibanaSavedObjectMeta" in vis_json:
-        index_pattern = \
-            get_index_pattern_from_meta(vis_json["kibanaSavedObjectMeta"])
-    return index_pattern
 
 
 def read_panel_file(panel_file):
@@ -489,13 +387,12 @@ def import_dashboard(kibana_url, import_file, data_sources=None, add_vis_studies
             raise ValueError("'id' field not found in ", + import_file)
 
         import_json = True
+        strict = True
         if strict:
             logger.debug("Retrieving dashboard %s to check release date.", dash_id)
             current_panel = fetch_dashboard(kibana_url, dash_id)
-
-            # If there is no current release, that means current dashboard was created before adding release_date field
-            # or panel is new in this ElasticSearch server, then import dashboard
-            import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'])
+            if current_panel['dashboard']:
+                import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'])
 
         if import_json:
             feed_dashboard(json_to_import, kibana_url, data_sources, add_vis_studies)
@@ -514,12 +411,10 @@ def import_dashboard(kibana_url, import_file, data_sources=None, add_vis_studies
                 raise ValueError("'id' field not found in ", + import_file)
 
             import_json = True
+            strict = True
             if strict:
                 logger.debug("Retrieving index pattern %s to check release date.", ip_id)
                 current_ip = fetch_index_pattern(kibana_url, ip_id)
-
-                # If there is no current release, that means current index pattern was created before adding
-                # release_date field or index pattern is new in this ElasticSearch server, then import it
                 import_json = new_release(current_ip, index_pattern)
 
             if import_json:
@@ -544,78 +439,78 @@ def new_release(current_item, item_to_import):
 
     current_release = current_item['value'].get(RELEASE_VERSION)
     import_release = item_to_import['value'].get(RELEASE_VERSION)
-
-    logger.debug("Current item release version %s.", current_release)
-
-    logger.debug("Item to import release version %s.", import_release)
-
+    logger.debug("Current item release version %s vs item to import version %s", current_release, import_release)
     is_new = True
-    if current_release:
-
-        if current_release >= import_release:
-            is_new = False
+    if current_release and import_release and current_release >= import_release:
+        is_new = False
 
     return is_new
 
 
-def create_kibana_index(kibana_url):
-    """
-    Force the creation of the kibana index using the kibana API
-    :param kibana_url: Kibana URL
-    :return:
-    """
+# def create_kibana_index(kibana_url):
+#     """
+#     Force the creation of the kibana index using the kibana API
+#     :param kibana_url: Kibana URL
+#     :return:
+#     """
+#
+#     def set_kibana_setting(endpoint_url, data_value):
+#         set_ok = False
+#
+#         try:
+#             res = requests_ses.post(endpoint_url, headers=ES6_HEADER,
+#                                     data=json.dumps(data_value), verify=False)
+#             res.raise_for_status()
+#             # With Search guard if the auth is invalid the URL is redirected to the login
+#             # We need to detect that and record it as an error
+#             if res.history and res.history[0].is_redirect:
+#                 logging.error("Problems with search guard authentication %s" % endpoint_url)
+#             else:
+#                 set_ok = True
+#         except requests.exceptions.HTTPError:
+#             logging.error("Impossible to set %s: %s", endpoint_url, str(res.json()))
+#
+#         return set_ok
+#
+#     kibana_settings_url = kibana_url + '/api/kibana/settings'
+#
+#     # Configure the default index with the default value in Kibana
+#     # If the kibana index does not exists, it is created by Kibana
+#     endpoint = 'defaultIndex'
+#     data_value = {"value": None}
+#     endpoint_url = kibana_settings_url + '/' + endpoint
+#
+#     return set_kibana_setting(endpoint_url, data_value)
 
-    def set_kibana_setting(endpoint_url, data_value):
-        set_ok = False
 
-        try:
-            res = requests_ses.post(endpoint_url, headers=ES6_HEADER,
-                                    data=json.dumps(data_value), verify=False)
-            res.raise_for_status()
-            # With Search guard if the auth is invalid the URL is redirected to the login
-            # We need to detect that and record it as an error
-            if res.history and res.history[0].is_redirect:
-                logging.error("Problems with search guard authentication %s" % endpoint_url)
-            else:
-                set_ok = True
-        except requests.exceptions.HTTPError:
-            logging.error("Impossible to set %s: %s", endpoint_url, str(res.json()))
+def configure_settings(kibana_url, settings):
+    """Configure the Kibana config"""
 
-        return set_ok
+    saved_objs = SavedObjects(kibana_url)
+    saved_objs.create_object("config", settings)
 
-    kibana_settings_url = kibana_url + '/api/kibana/settings'
-
-    # Configure the default index with the default value in Kibana
-    # If the kibana index does not exists, it is created by Kibana
-    endpoint = 'defaultIndex'
-    data_value = {"value": None}
-    endpoint_url = kibana_settings_url + '/' + endpoint
-
-    return set_kibana_setting(endpoint_url, data_value)
-
-
-def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
-    """
-    Check if kibana index already exists and if not, create it
-
-    :param es_url: Elasticsearch URL with kibana
-    :param kibana_url: Kibana URL
-    :param kibana_index: index with kibana information
-    :return:
-    """
-    kibana_index_ok = False
-    kibana_index_url = es_url + "/" + kibana_index
-
-    try:
-        res = requests_ses.get(kibana_index_url, verify=False)
-        res.raise_for_status()
-        kibana_index_ok = True
-    except:
-        logging.info("%s does not exist. Creating it." % kibana_index_url)
-        if create_kibana_index(kibana_url):
-            kibana_index_ok = True
-
-    return kibana_index_ok
+# def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
+#     """
+#     Check if kibana index already exists and if not, create it
+#
+#     :param es_url: Elasticsearch URL with kibana
+#     :param kibana_url: Kibana URL
+#     :param kibana_index: index with kibana information
+#     :return:
+#     """
+#     kibana_index_ok = False
+#     kibana_index_url = es_url + "/" + kibana_index
+#
+#     try:
+#         res = requests_ses.get(kibana_index_url, verify=False)
+#         res.raise_for_status()
+#         kibana_index_ok = True
+#     except:
+#         logging.info("%s does not exist. Creating it." % kibana_index_url)
+#         if create_kibana_index(kibana_url):
+#             kibana_index_ok = True
+#
+#     return kibana_index_ok
 
 
 def feed_dashboard(dashboard, kibana_url, data_sources=None,
@@ -671,10 +566,8 @@ def fetch_index_pattern(kibana_url, ip_id):
 
     :param kibana_url: Kibana URL
     :param ip_id: index pattern identifier
-    :param es_index: kibana index
     :return: a dict with index pattern data
     """
-
     logger.debug("Fetching index pattern %s", ip_id)
     ip_json = get_index_pattern_json(kibana_url, ip_id)
 
@@ -693,62 +586,33 @@ def fetch_dashboard(kibana_url, dash_id):
     :return: a dict with the dashboard data (vis, searches and index patterns)
     """
 
-    # Kibana dashboard fields
-    kibana = {"dashboard": None,
-              "visualizations": [],
-              "index_patterns": [],
-              "searches": []}
+    dashboard = Dashboard(kibana_url)
+    objects = dashboard.export_dashboard(dash_id)
 
-    # Used to avoid having duplicates
-    search_ids_done = []
-    index_ids_done = []
+    kibana = {
+        DASHBOARD: None,
+        VISUALIZATIONS: [],
+        INDEX_PATTERNS: [],
+        SEARCHES: []
+    }
 
-    logger.debug("Fetching dashboard %s", dash_id)
-    kibana["dashboard"] = {"id": dash_id,
-                           "value": get_dashboard_json(kibana_url, dash_id)}
-
-    if "panelsJSON" not in kibana["dashboard"]["value"]:
-        # The dashboard is empty. No visualizations included.
+    if not objects:
         return kibana
 
-    # Export all visualizations and the index patterns and searches in them
-    for panel in json.loads(kibana["dashboard"]["value"]["panelsJSON"]):
-        logger.debug("Analyzing panel %s (%s)", panel['id'], panel['type'])
-        if panel['type'] in ['visualization']:
-            vis_id = panel['id']
-            vis_json = get_vis_json(kibana_url, vis_id)
-            kibana["visualizations"].append({"id": vis_id, "value": vis_json})
-            search_id = get_search_from_vis(kibana_url, vis_id)
-            if search_id and search_id not in search_ids_done:
-                search_ids_done.append(search_id)
-                kibana["searches"].append(
-                    {"id": search_id,
-                     "value": get_search_json(kibana_url, search_id)}
-                    )
-            index_pattern_id = get_index_pattern_from_vis(kibana_url, vis_id)
-            if index_pattern_id and index_pattern_id not in index_ids_done:
-                index_ids_done.append(index_pattern_id)
-                kibana["index_patterns"].append(
-                    {"id": index_pattern_id,
-                     "value": get_index_pattern_json(kibana_url,
-                                                     index_pattern_id)}
-                    )
-        elif panel['type'] in ['search']:
-            # A search could be directly visualized inside a panel
-            search_id = panel['id']
-            kibana["searches"].append(
-                {"id": search_id,
-                 "value": get_search_json(kibana_url, search_id)}
-                )
-            index_pattern_id = get_index_pattern_from_search(kibana_url,
-                                                             search_id)
-            if index_pattern_id and index_pattern_id not in index_ids_done:
-                index_ids_done.append(index_pattern_id)
-                kibana["index_patterns"].append(
-                    {"id": index_pattern_id,
-                     "value": get_index_pattern_json(kibana_url,
-                                                     index_pattern_id)}
-                    )
+    for obj in objects.get('objects', []):
+        obj_id = obj['id']
+        obj_type = obj['type']
+
+        if obj_type == DASHBOARD:
+            kibana[DASHBOARD] = {'id:': obj_id, 'value': obj}
+        elif obj_type == VISUALIZATION:
+            kibana[VISUALIZATIONS].append({'id:': obj_id, 'value': obj})
+        elif obj_type == SEARCHES:
+            kibana[SEARCHES].append({'id:': obj_id, 'value': obj})
+        elif obj_type == INDEX_PATTERN:
+            kibana[INDEX_PATTERNS].append({'id:': obj_id, 'value': obj})
+        else:
+            logging.info("object %s with type %s ignored.", obj_id, obj_type)
 
     return kibana
 

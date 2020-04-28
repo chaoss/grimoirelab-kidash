@@ -25,24 +25,9 @@ import logging
 import requests
 
 from kidash.clients.http import HttpClient
+from kidash.utils import urijoin
 
 logger = logging.getLogger(__name__)
-
-
-def urijoin(*args):
-    """Joins given arguments into a URI.
-
-    Trailing and leading slashes are stripped for each argument.
-
-    This code is based on a Rune Kaagaard's answer on Stack Overflow.
-    See http://stackoverflow.com/questions/1793261 for more into. The
-    code was licensed as cc by-sa 3.0.
-
-    :params *args: list of arguments to join
-
-    :returns: a URI string
-    """
-    return '/'.join(map(lambda x: str(x).strip('/'), args))
 
 
 class SavedObjects(HttpClient):
@@ -54,7 +39,6 @@ class SavedObjects(HttpClient):
     :param base_url: the Kibana URL
     """
     API_SAVED_OBJECTS_URL = 'api/saved_objects'
-    API_SEARCH_COMMAND = '_search'
 
     def __init__(self, base_url):
         super().__init__(base_url)
