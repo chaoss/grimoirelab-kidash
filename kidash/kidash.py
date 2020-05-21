@@ -26,7 +26,7 @@ import logging
 
 import os
 
-import dateutil
+import dateutil.parser
 import os.path
 
 from datetime import datetime as dt
@@ -42,6 +42,9 @@ ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
 HEADERS_JSON = {"Content-Type": "application/json"}
 RELEASE_DATE = 'release_date'
 STUDY_PATTERN = "_study_"
+# This index stores the dashboards and index pattern IDs together with the release date. This index is
+# introduced to since the `release_date` value cannot be stored anymore in the .kibana
+SIGILS_INDEX = ".grimoirelab-sigils"
 
 BACKOFF_FACTOR = 0.2
 MAX_RETRIES = 21
@@ -49,6 +52,404 @@ MAX_RETRIES_ON_REDIRECT = 5
 MAX_RETRIES_ON_READ = 8
 MAX_RETRIES_ON_CONNECT = 21
 STATUS_FORCE_LIST = [408, 409, 429, 502, 503, 504]
+
+# This mapping includes the types metadashboard and projectname, used by Kibiter. They must be
+# include in this way, since the mapping for .kibana is set to strict for versions >= 6.8
+KIBANA_MAPPING = {
+    "mappings": {
+          "doc": {
+            "dynamic": "strict",
+            "properties": {
+              "config": {
+                "dynamic": "true",
+                "properties": {
+                  "buildNum": {
+                    "type": "keyword"
+                  },
+                  "defaultIndex": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  },
+                  "timepicker:timeDefaults": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  }
+                }
+              },
+              "dashboard": {
+                "properties": {
+                  "description": {
+                    "type": "text"
+                  },
+                  "hits": {
+                    "type": "integer"
+                  },
+                  "kibanaSavedObjectMeta": {
+                    "properties": {
+                      "searchSourceJSON": {
+                        "type": "text"
+                      }
+                    }
+                  },
+                  "optionsJSON": {
+                    "type": "text"
+                  },
+                  "panelsJSON": {
+                    "type": "text"
+                  },
+                  "refreshInterval": {
+                    "properties": {
+                      "display": {
+                        "type": "keyword"
+                      },
+                      "pause": {
+                        "type": "boolean"
+                      },
+                      "section": {
+                        "type": "integer"
+                      },
+                      "value": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "timeFrom": {
+                    "type": "keyword"
+                  },
+                  "timeRestore": {
+                    "type": "boolean"
+                  },
+                  "timeTo": {
+                    "type": "keyword"
+                  },
+                  "title": {
+                    "type": "text"
+                  },
+                  "uiStateJSON": {
+                    "type": "text"
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "index-pattern": {
+                "properties": {
+                  "fieldFormatMap": {
+                    "type": "text"
+                  },
+                  "fields": {
+                    "type": "text"
+                  },
+                  "intervalName": {
+                    "type": "keyword"
+                  },
+                  "notExpandable": {
+                    "type": "boolean"
+                  },
+                  "sourceFilters": {
+                    "type": "text"
+                  },
+                  "timeFieldName": {
+                    "type": "keyword"
+                  },
+                  "title": {
+                    "type": "text"
+                  },
+                  "type": {
+                    "type": "keyword"
+                  },
+                  "typeMeta": {
+                    "type": "keyword"
+                  }
+                }
+              },
+              "kql-telemetry": {
+                "properties": {
+                  "optInCount": {
+                    "type": "long"
+                  },
+                  "optOutCount": {
+                    "type": "long"
+                  }
+                }
+              },
+              "metadashboard": {
+                "properties": {
+                  "dashboards": {
+                    "properties": {
+                      "description": {
+                        "type": "text",
+                        "fields": {
+                          "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256
+                          }
+                        }
+                      },
+                      "name": {
+                        "type": "text",
+                        "fields": {
+                          "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256
+                          }
+                        }
+                      },
+                      "panel_id": {
+                        "type": "text",
+                        "fields": {
+                          "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256
+                          }
+                        }
+                      },
+                      "title": {
+                        "type": "text",
+                        "fields": {
+                          "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256
+                          }
+                        }
+                      },
+                      "type": {
+                        "type": "text",
+                        "fields": {
+                          "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "description": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  },
+                  "name": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  },
+                  "panel_id": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  },
+                  "title": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  },
+                  "type": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  }
+                }
+              },
+              "migrationVersion": {
+                "dynamic": "true",
+                "properties": {
+                  "visualization": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  }
+                }
+              },
+              "namespace": {
+                "type": "keyword"
+              },
+              "projectname": {
+                "properties": {
+                  "name": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  }
+                }
+              },
+              "search": {
+                "properties": {
+                  "columns": {
+                    "type": "keyword"
+                  },
+                  "description": {
+                    "type": "text"
+                  },
+                  "hits": {
+                    "type": "integer"
+                  },
+                  "kibanaSavedObjectMeta": {
+                    "properties": {
+                      "searchSourceJSON": {
+                        "type": "text"
+                      }
+                    }
+                  },
+                  "sort": {
+                    "type": "keyword"
+                  },
+                  "title": {
+                    "type": "text"
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "server": {
+                "properties": {
+                  "uuid": {
+                    "type": "keyword"
+                  }
+                }
+              },
+              "timelion-sheet": {
+                "properties": {
+                  "description": {
+                    "type": "text"
+                  },
+                  "hits": {
+                    "type": "integer"
+                  },
+                  "kibanaSavedObjectMeta": {
+                    "properties": {
+                      "searchSourceJSON": {
+                        "type": "text"
+                      }
+                    }
+                  },
+                  "timelion_chart_height": {
+                    "type": "integer"
+                  },
+                  "timelion_columns": {
+                    "type": "integer"
+                  },
+                  "timelion_interval": {
+                    "type": "keyword"
+                  },
+                  "timelion_other_interval": {
+                    "type": "keyword"
+                  },
+                  "timelion_rows": {
+                    "type": "integer"
+                  },
+                  "timelion_sheet": {
+                    "type": "text"
+                  },
+                  "title": {
+                    "type": "text"
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "type": {
+                "type": "keyword"
+              },
+              "updated_at": {
+                "type": "date"
+              },
+              "url": {
+                "properties": {
+                  "accessCount": {
+                    "type": "long"
+                  },
+                  "accessDate": {
+                    "type": "date"
+                  },
+                  "createDate": {
+                    "type": "date"
+                  },
+                  "url": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 2048
+                      }
+                    }
+                  }
+                }
+              },
+              "visualization": {
+                "properties": {
+                  "description": {
+                    "type": "text"
+                  },
+                  "kibanaSavedObjectMeta": {
+                    "properties": {
+                      "searchSourceJSON": {
+                        "type": "text"
+                      }
+                    }
+                  },
+                  "savedSearchId": {
+                    "type": "keyword"
+                  },
+                  "title": {
+                    "type": "text"
+                  },
+                  "uiStateJSON": {
+                    "type": "text"
+                  },
+                  "version": {
+                    "type": "integer"
+                  },
+                  "visState": {
+                    "type": "text"
+                  }
+                }
+              }
+            }
+          }
+        }
+}
 
 
 def grimoire_con(insecure=True, conn_retries=MAX_RETRIES_ON_CONNECT, total=MAX_RETRIES):
@@ -97,16 +498,20 @@ class ElasticSearch:
 
 def find_elasticsearch_version(elastic):
     global ES_VER
+    global ES_VER_MID
     if not ES_VER:
         res = requests_ses.get(elastic.url)
-        main_ver = res.json()['version']['number'].split(".")[0]
+        version = res.json()['version']['number'].split(".")
+        main_ver = version[0]
+        mid_ver = version[1]
         ES_VER = int(main_ver)
-    return ES_VER
+        ES_VER_MID = int(mid_ver)
+    return ES_VER, ES_VER_MID
 
 
 def find_item_json(elastic, type_, item_id):
     """ Find and item (dashboard, vis, search, index pattern) using its id """
-    elastic_ver = find_elasticsearch_version(elastic)
+    elastic_ver, elastic_mid_ver = find_elasticsearch_version(elastic)
 
     if elastic_ver < 6:
         item_json_url = elastic.index_url + "/" + type_ + "/" + item_id
@@ -259,7 +664,7 @@ def add_vis_style(item_json):
 def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
                      add_vis_studies=False, viz_titles=None):
     """ Import an item in Elasticsearch  """
-    elastic_ver = find_elasticsearch_version(elastic)
+    elastic_ver, elastic_ver_mid = find_elasticsearch_version(elastic)
 
     if not add_vis_studies:
         if type_ == 'dashboard':
@@ -302,6 +707,13 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
         if type_ == 'visualization':
             # Metric vis includes in es6 new params for the style
             item_json = add_vis_style(item_json)
+
+        if elastic_ver_mid >= 8:
+            release_date = item_json.pop(RELEASE_DATE, None)
+
+            if release_date:
+                logger.debug("Removing `%s` from item since not allowed, and adding it to SIGILS_INDEX", RELEASE_DATE)
+                add_release_item_to_sigils_index(elastic.url, item_id, type_, release_date)
 
         item_json = {"type": type_, type_: item_json}
 
@@ -664,7 +1076,7 @@ def search_dashboards(elastic_url, es_index=None):
         es_index = ".kibana"
 
     elastic = ElasticSearch(elastic_url, es_index)
-    elastic_ver = find_elasticsearch_version(elastic)
+    elastic_ver, _ = find_elasticsearch_version(elastic)
 
     if elastic_ver < 6:
         dash_json_url = elastic.index_url + "/dashboard/_search?size=10000"
@@ -814,6 +1226,81 @@ def is_index_pattern_from_data_sources(index, data_sources):
     return found
 
 
+def add_release_item_to_sigils_index(elastic_url, item_id, item_type, release_date):
+    """Add release information for a given item to the Sigils index
+
+    :param elastic_url: ElasticSearch URL
+    :param item_id: item ID
+    :param item_type: item type
+    :param release_date: str representation of the release date
+    """
+    sigils_index_url = elastic_url + '/' + SIGILS_INDEX + '/doc/' + item_id
+
+    item_id = item_id.split(':')[1] if ':' in item_id else item_id
+
+    item_json = {
+      "item_id": item_id,
+      "item_type": item_type,
+      "release_date": release_date
+    }
+    res = requests_ses.post(sigils_index_url, data=json.dumps(item_json), verify=False, headers=HEADERS_JSON)
+    requests_ses.put(sigils_index_url)
+    res.raise_for_status()
+    logger.debug("Release info added to Sigils index")
+
+
+def get_release_from_sigils_index(elastic_url, item_id, item_type):
+    """Get release date for the given `item_id` stored in the Sigils index
+
+    :param elastic_url: ElasticSearch URL
+    :param item_id: item ID
+    :param item_type: item type
+
+    :return: a str representation of the release date
+    """
+    release_date = None
+    sigils_index_url = elastic_url + '/' + SIGILS_INDEX
+
+    try:
+        res = requests_ses.get(sigils_index_url, verify=False)
+        res.raise_for_status()
+
+        query = {
+          "query": {
+              "bool": {
+                  "filter": [
+                      {
+                          "term": {
+                            "item_id.keyword": item_id
+                          }
+                      },
+                      {
+                          "term": {
+                            "item_type.keyword": item_type
+                          }
+                      }
+                  ]
+              }
+          }
+        }
+
+        search_url = sigils_index_url + '/_search'
+        res = requests_ses.get(search_url, data=json.dumps(query), headers=HEADERS_JSON)
+        r_json = res.json()
+        hits = r_json['hits']
+
+        if hits['total'] == 0:
+            logger.warning("Item %s %s not found in Sigils index" % (item_type, item_id))
+        elif hits['total'] > 1:
+            logger.warning("Too many hits for %s %s in Sigils index" % (item_type, item_id))
+        else:
+            release_date = hits['hits'][0]['_source']['release_date']
+    except:
+        logger.debug("Item %s %s not found in Sigils index" % (item_type, item_id))
+
+    return release_date
+
+
 def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
                      data_sources=None, add_vis_studies=False, strict=False):
     """ Import a dashboard from a file
@@ -845,9 +1332,10 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
             logger.debug("Retrieving dashboard %s to check release date.", dash_id)
             current_panel = fetch_dashboard(elastic_url, dash_id, es_index)
 
+            stored_release_date = get_release_from_sigils_index(elastic_url, dash_id, item_type='dashboard')
             # If there is no current release, that means current dashboard was created before adding release_date field
             # or panel is new in this ElasticSearch server, then import dashboard
-            import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'])
+            import_json = new_release(current_panel['dashboard'], json_to_import['dashboard'], stored_release_date)
 
         if import_json:
             feed_dashboard(json_to_import, elastic_url, kibana_url, es_index, data_sources, add_vis_studies)
@@ -871,9 +1359,10 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
                 logger.debug("Retrieving index pattern %s to check release date.", ip_id)
                 current_ip = fetch_index_pattern(elastic_url, ip_id, es_index)
 
+                stored_release_date = get_release_from_sigils_index(elastic_url, ip_id, item_type='index-pattern')
                 # If there is no current release, that means current index pattern was created before adding
                 # release_date field or index pattern is new in this ElasticSearch server, then import it
-                import_json = new_release(current_ip, index_pattern)
+                import_json = new_release(current_ip, index_pattern, stored_release_date)
 
             if import_json:
                 feed_dashboard({"index_patterns": [index_pattern]}, elastic_url, kibana_url,
@@ -888,15 +1377,16 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
         logger.warning("Strict mode supported only for panels and index patterns.")
 
 
-def new_release(current_item, item_to_import):
+def new_release(current_item, item_to_import, item_sigils_release=None):
     """Check whether a release is newer than another one
 
-    :param current_release:
-    :param import_release:
+    :param current_item: item stored in the .kibana index
+    :param item_to_import: item to import
+    :param current_release: release extracted from the SIGILS_INDEX
+
     :return: True if import release is newer than current one
     """
-
-    current_release = current_item['value'].get(RELEASE_DATE)
+    current_release = current_item['value'].get(RELEASE_DATE, item_sigils_release)
     import_release = item_to_import['value'].get(RELEASE_DATE)
 
     logger.debug("Current item release date %s.", current_release)
@@ -917,10 +1407,12 @@ def new_release(current_item, item_to_import):
     return is_new
 
 
-def create_kibana_index(kibana_url):
+def create_kibana_index(kibana_url, kibana_index_url):
     """
     Force the creation of the kibana index using the kibana API
     :param kibana_url: Kibana URL
+    :param kibana_index_url: Kiban index URL (.kibana)
+
     :return:
     """
 
@@ -942,8 +1434,11 @@ def create_kibana_index(kibana_url):
 
         return set_ok
 
-    kibana_settings_url = kibana_url + '/api/kibana/settings'
+    # In Kibana 6.8 we need to pass an ad-hoc mapping to include the metadashboard and projectname types
+    r = requests_ses.put(kibana_index_url, data=json.dumps(KIBANA_MAPPING), headers=HEADERS_JSON)
+    r.raise_for_status()
 
+    kibana_settings_url = kibana_url + '/api/kibana/settings'
     # Configure the default index with the default value in Kibana
     # If the kibana index does not exists, it is created by Kibana
     endpoint = 'defaultIndex'
@@ -972,7 +1467,7 @@ def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
         kibana_index_ok = True
     except:
         logging.info("%s does not exist. Creating it." % kibana_index_url)
-        if create_kibana_index(kibana_url):
+        if create_kibana_index(kibana_url, kibana_index_url):
             kibana_index_ok = True
 
     return kibana_index_ok
