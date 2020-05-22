@@ -712,7 +712,8 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
             release_date = item_json.pop(RELEASE_DATE, None)
 
             if release_date:
-                logger.debug("Removing `%s` from item since not allowed, and adding it to SIGILS_INDEX", RELEASE_DATE)
+                logger.debug("Removing `%s` from item %s since not allowed, and adding it to Sigils index"
+                             % (RELEASE_DATE, item_id))
                 add_release_item_to_sigils_index(elastic.url, item_id, type_, release_date)
 
         item_json = {"type": type_, type_: item_json}
@@ -1226,17 +1227,17 @@ def is_index_pattern_from_data_sources(index, data_sources):
     return found
 
 
-def add_release_item_to_sigils_index(elastic_url, item_id, item_type, release_date):
+def add_release_item_to_sigils_index(elastic_url, item_uuid, item_type, release_date):
     """Add release information for a given item to the Sigils index
 
     :param elastic_url: ElasticSearch URL
-    :param item_id: item ID
+    :param item_uuid: item UUID
     :param item_type: item type
     :param release_date: str representation of the release date
     """
-    sigils_index_url = elastic_url + '/' + SIGILS_INDEX + '/doc/' + item_id
+    sigils_index_url = elastic_url + '/' + SIGILS_INDEX + '/doc/' + item_uuid
 
-    item_id = item_id.split(':')[1] if ':' in item_id else item_id
+    item_id = item_uuid.split(':')[1] if ':' in item_uuid else item_uuid
 
     item_json = {
       "item_id": item_id,
@@ -1244,9 +1245,8 @@ def add_release_item_to_sigils_index(elastic_url, item_id, item_type, release_da
       "release_date": release_date
     }
     res = requests_ses.post(sigils_index_url, data=json.dumps(item_json), verify=False, headers=HEADERS_JSON)
-    requests_ses.put(sigils_index_url)
     res.raise_for_status()
-    logger.debug("Release info added to Sigils index")
+    logger.debug("Release info added to Sigils index for %s" % item_uuid)
 
 
 def get_release_from_sigils_index(elastic_url, item_id, item_type):
@@ -1382,19 +1382,19 @@ def new_release(current_item, item_to_import, item_sigils_release=None):
 
     :param current_item: item stored in the .kibana index
     :param item_to_import: item to import
-    :param current_release: release extracted from the SIGILS_INDEX
+    :param item_sigils_release: release extracted from the Sigils index
 
     :return: True if import release is newer than current one
     """
     current_release = current_item['value'].get(RELEASE_DATE, item_sigils_release)
     import_release = item_to_import['value'].get(RELEASE_DATE)
 
-    logger.debug("Current item release date %s.", current_release)
+    logger.debug("Release date for current item %s is %s.", current_item['id'], current_release)
 
     if not import_release:
         raise ValueError("'" + RELEASE_DATE + "' field not found in item to import.")
 
-    logger.debug("Item to import release date %s.", import_release)
+    logger.debug("Release date for import item %s is %s", item_to_import['id'], import_release)
 
     is_new = True
     if current_release:
