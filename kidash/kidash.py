@@ -532,10 +532,7 @@ def find_item_json(elastic, type_, item_id):
         logger.debug("Can not find type %s item %s", type_, item_id)
         item_json = {}
     else:
-        if elastic_ver < 6:
-            item_json = item_json["_source"]
-        else:
-            item_json = item_json["_source"][type_]
+        item_json = item_json["_source"][type_]
 
     return item_json
 
@@ -581,9 +578,7 @@ def fix_dashboard_heights(item_json):
     be shown completly in some cases, to Kibana > 6, in which with a height of
     1 the title bar of the visualization makes imposible to show a complete
     visualization of any kind.
-
     """
-
     panels = json.loads(item_json["panelsJSON"])
 
     for panel in panels:
@@ -600,26 +595,6 @@ def fix_dashboard_heights(item_json):
     item_json["panelsJSON"] = json.dumps(panels)
 
     return item_json
-
-
-def fix_dash_bool_filters(dash_json):
-    """ The bool filter is pretty deep inside the JSON document """
-    if "kibanaSavedObjectMeta" in dash_json and "searchSourceJSON" in dash_json["kibanaSavedObjectMeta"]:
-        meta_saved =  json.loads(dash_json["kibanaSavedObjectMeta"]["searchSourceJSON"])
-        if 'filter' in meta_saved:
-            for filter_ in meta_saved['filter']:
-                query = filter_.get('query')
-                if query and 'match' in query:
-                    match = filter_['query']['match']
-                    for field in match:
-                        if match[field]['type'] == 'phrase':
-                            if match[field]['query'] == 1:
-                                match[field]['query'] = True
-                            elif match[field]['query'] == 0:
-                                match[field]['query'] = False
-        dash_json["kibanaSavedObjectMeta"]["searchSourceJSON"] = json.dumps(meta_saved)
-
-    return dash_json
 
 
 def add_vis_style(item_json):
@@ -699,8 +674,6 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
         item_json_url = elastic.index_url + "/doc/" + item_id
 
         if type_ == 'dashboard':
-            # Bool filters value must be true/false no 1/0 in es6
-            item_json = fix_dash_bool_filters(item_json)
             # Vis height of 1 is too small for kibana6
             item_json = fix_dashboard_heights(item_json)
 
@@ -934,7 +907,6 @@ def create_index_pattern(elastic_url, dashboard, enrich_index, es_index=None):
         :param enrich_index: ES enriched index used in the new dashboard
         :param es_index: kibana index
     """
-
     index_pattern = None
     if not es_index:
         es_index = ".kibana"
@@ -1079,19 +1051,15 @@ def search_dashboards(elastic_url, es_index=None):
     elastic = ElasticSearch(elastic_url, es_index)
     elastic_ver, _ = find_elasticsearch_version(elastic)
 
-    if elastic_ver < 6:
-        dash_json_url = elastic.index_url + "/dashboard/_search?size=10000"
-        res = requests_ses.get(dash_json_url, verify=False)
-    else:
-        items_json_url = elastic.index_url + "/_search?size=10000"
-        query = '''
-        {
-            "query" : {
-                "term" : { "type" : "dashboard"  }
-             }
-        }'''
-        res = requests_ses.post(items_json_url, data=query, verify=False,
-                                headers=HEADERS_JSON)
+    items_json_url = elastic.index_url + "/_search?size=10000"
+    query = '''
+    {
+        "query" : {
+            "term" : { "type" : "dashboard"  }
+         }
+    }'''
+    res = requests_ses.post(items_json_url, data=query, verify=False,
+                            headers=HEADERS_JSON)
     res.raise_for_status()
 
     res_json = res.json()
@@ -1101,10 +1069,7 @@ def search_dashboards(elastic_url, es_index=None):
         raise RuntimeError("Can't find dashboards")
 
     for dash in res_json["hits"]["hits"]:
-        if elastic_ver < 6:
-            dash_json = dash["_source"]
-        else:
-            dash_json = dash["_source"]["dashboard"]
+        dash_json = dash["_source"]["dashboard"]
 
         dashboards.append({"_id": dash["_id"], "title": dash_json["title"]})
 
