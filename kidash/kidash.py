@@ -23,21 +23,18 @@
 import copy
 import json
 import logging
-
 import os
-
-import dateutil.parser
 import os.path
-
 from datetime import datetime as dt
 
+import dateutil.parser
 import requests
 import urllib3
-
 
 logger = logging.getLogger(__name__)
 
 ES_VER = None
+ES_VER_MID = None
 ES6_HEADER = {"Content-Type": "application/json", "kbn-xsrf": "true"}
 HEADERS_JSON = {"Content-Type": "application/json"}
 RELEASE_DATE = 'release_date'
@@ -57,398 +54,398 @@ STATUS_FORCE_LIST = [408, 409, 429, 502, 503, 504]
 # include in this way, since the mapping for .kibana is set to strict for versions >= 6.8
 KIBANA_MAPPING = {
     "mappings": {
-          "doc": {
+        "doc": {
             "dynamic": "strict",
             "properties": {
-              "config": {
-                "dynamic": "true",
-                "properties": {
-                  "buildNum": {
-                    "type": "keyword"
-                  },
-                  "defaultIndex": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  },
-                  "timepicker:timeDefaults": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  }
-                }
-              },
-              "dashboard": {
-                "properties": {
-                  "description": {
-                    "type": "text"
-                  },
-                  "hits": {
-                    "type": "integer"
-                  },
-                  "kibanaSavedObjectMeta": {
+                "config": {
+                    "dynamic": "true",
                     "properties": {
-                      "searchSourceJSON": {
-                        "type": "text"
-                      }
+                        "buildNum": {
+                            "type": "keyword"
+                        },
+                        "defaultIndex": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
+                        "timepicker:timeDefaults": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        }
                     }
-                  },
-                  "optionsJSON": {
-                    "type": "text"
-                  },
-                  "panelsJSON": {
-                    "type": "text"
-                  },
-                  "refreshInterval": {
+                },
+                "dashboard": {
                     "properties": {
-                      "display": {
-                        "type": "keyword"
-                      },
-                      "pause": {
-                        "type": "boolean"
-                      },
-                      "section": {
-                        "type": "integer"
-                      },
-                      "value": {
-                        "type": "integer"
-                      }
+                        "description": {
+                            "type": "text"
+                        },
+                        "hits": {
+                            "type": "integer"
+                        },
+                        "kibanaSavedObjectMeta": {
+                            "properties": {
+                                "searchSourceJSON": {
+                                    "type": "text"
+                                }
+                            }
+                        },
+                        "optionsJSON": {
+                            "type": "text"
+                        },
+                        "panelsJSON": {
+                            "type": "text"
+                        },
+                        "refreshInterval": {
+                            "properties": {
+                                "display": {
+                                    "type": "keyword"
+                                },
+                                "pause": {
+                                    "type": "boolean"
+                                },
+                                "section": {
+                                    "type": "integer"
+                                },
+                                "value": {
+                                    "type": "integer"
+                                }
+                            }
+                        },
+                        "timeFrom": {
+                            "type": "keyword"
+                        },
+                        "timeRestore": {
+                            "type": "boolean"
+                        },
+                        "timeTo": {
+                            "type": "keyword"
+                        },
+                        "title": {
+                            "type": "text"
+                        },
+                        "uiStateJSON": {
+                            "type": "text"
+                        },
+                        "version": {
+                            "type": "integer"
+                        }
                     }
-                  },
-                  "timeFrom": {
-                    "type": "keyword"
-                  },
-                  "timeRestore": {
-                    "type": "boolean"
-                  },
-                  "timeTo": {
-                    "type": "keyword"
-                  },
-                  "title": {
-                    "type": "text"
-                  },
-                  "uiStateJSON": {
-                    "type": "text"
-                  },
-                  "version": {
-                    "type": "integer"
-                  }
-                }
-              },
-              "index-pattern": {
-                "properties": {
-                  "fieldFormatMap": {
-                    "type": "text"
-                  },
-                  "fields": {
-                    "type": "text"
-                  },
-                  "intervalName": {
-                    "type": "keyword"
-                  },
-                  "notExpandable": {
-                    "type": "boolean"
-                  },
-                  "sourceFilters": {
-                    "type": "text"
-                  },
-                  "timeFieldName": {
-                    "type": "keyword"
-                  },
-                  "title": {
-                    "type": "text"
-                  },
-                  "type": {
-                    "type": "keyword"
-                  },
-                  "typeMeta": {
-                    "type": "keyword"
-                  }
-                }
-              },
-              "kql-telemetry": {
-                "properties": {
-                  "optInCount": {
-                    "type": "long"
-                  },
-                  "optOutCount": {
-                    "type": "long"
-                  }
-                }
-              },
-              "metadashboard": {
-                "properties": {
-                  "dashboards": {
+                },
+                "index-pattern": {
                     "properties": {
-                      "description": {
-                        "type": "text",
+                        "fieldFormatMap": {
+                            "type": "text"
+                        },
                         "fields": {
-                          "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 256
-                          }
+                            "type": "text"
+                        },
+                        "intervalName": {
+                            "type": "keyword"
+                        },
+                        "notExpandable": {
+                            "type": "boolean"
+                        },
+                        "sourceFilters": {
+                            "type": "text"
+                        },
+                        "timeFieldName": {
+                            "type": "keyword"
+                        },
+                        "title": {
+                            "type": "text"
+                        },
+                        "type": {
+                            "type": "keyword"
+                        },
+                        "typeMeta": {
+                            "type": "keyword"
                         }
-                      },
-                      "name": {
-                        "type": "text",
-                        "fields": {
-                          "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 256
-                          }
-                        }
-                      },
-                      "panel_id": {
-                        "type": "text",
-                        "fields": {
-                          "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 256
-                          }
-                        }
-                      },
-                      "title": {
-                        "type": "text",
-                        "fields": {
-                          "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 256
-                          }
-                        }
-                      },
-                      "type": {
-                        "type": "text",
-                        "fields": {
-                          "keyword": {
-                            "type": "keyword",
-                            "ignore_above": 256
-                          }
-                        }
-                      }
                     }
-                  },
-                  "description": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  },
-                  "name": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  },
-                  "panel_id": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  },
-                  "title": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  },
-                  "type": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  }
-                }
-              },
-              "migrationVersion": {
-                "dynamic": "true",
-                "properties": {
-                  "visualization": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  }
-                }
-              },
-              "namespace": {
-                "type": "keyword"
-              },
-              "projectname": {
-                "properties": {
-                  "name": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                      }
-                    }
-                  }
-                }
-              },
-              "search": {
-                "properties": {
-                  "columns": {
-                    "type": "keyword"
-                  },
-                  "description": {
-                    "type": "text"
-                  },
-                  "hits": {
-                    "type": "integer"
-                  },
-                  "kibanaSavedObjectMeta": {
+                },
+                "kql-telemetry": {
                     "properties": {
-                      "searchSourceJSON": {
-                        "type": "text"
-                      }
+                        "optInCount": {
+                            "type": "long"
+                        },
+                        "optOutCount": {
+                            "type": "long"
+                        }
                     }
-                  },
-                  "sort": {
-                    "type": "keyword"
-                  },
-                  "title": {
-                    "type": "text"
-                  },
-                  "version": {
-                    "type": "integer"
-                  }
-                }
-              },
-              "server": {
-                "properties": {
-                  "uuid": {
-                    "type": "keyword"
-                  }
-                }
-              },
-              "timelion-sheet": {
-                "properties": {
-                  "description": {
-                    "type": "text"
-                  },
-                  "hits": {
-                    "type": "integer"
-                  },
-                  "kibanaSavedObjectMeta": {
+                },
+                "metadashboard": {
                     "properties": {
-                      "searchSourceJSON": {
-                        "type": "text"
-                      }
+                        "dashboards": {
+                            "properties": {
+                                "description": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword",
+                                            "ignore_above": 256
+                                        }
+                                    }
+                                },
+                                "name": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword",
+                                            "ignore_above": 256
+                                        }
+                                    }
+                                },
+                                "panel_id": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword",
+                                            "ignore_above": 256
+                                        }
+                                    }
+                                },
+                                "title": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword",
+                                            "ignore_above": 256
+                                        }
+                                    }
+                                },
+                                "type": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword",
+                                            "ignore_above": 256
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "description": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
+                        "name": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
+                        "panel_id": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
+                        "title": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
+                        "type": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        }
                     }
-                  },
-                  "timelion_chart_height": {
-                    "type": "integer"
-                  },
-                  "timelion_columns": {
-                    "type": "integer"
-                  },
-                  "timelion_interval": {
+                },
+                "migrationVersion": {
+                    "dynamic": "true",
+                    "properties": {
+                        "visualization": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        }
+                    }
+                },
+                "namespace": {
                     "type": "keyword"
-                  },
-                  "timelion_other_interval": {
+                },
+                "projectname": {
+                    "properties": {
+                        "name": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        }
+                    }
+                },
+                "search": {
+                    "properties": {
+                        "columns": {
+                            "type": "keyword"
+                        },
+                        "description": {
+                            "type": "text"
+                        },
+                        "hits": {
+                            "type": "integer"
+                        },
+                        "kibanaSavedObjectMeta": {
+                            "properties": {
+                                "searchSourceJSON": {
+                                    "type": "text"
+                                }
+                            }
+                        },
+                        "sort": {
+                            "type": "keyword"
+                        },
+                        "title": {
+                            "type": "text"
+                        },
+                        "version": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "server": {
+                    "properties": {
+                        "uuid": {
+                            "type": "keyword"
+                        }
+                    }
+                },
+                "timelion-sheet": {
+                    "properties": {
+                        "description": {
+                            "type": "text"
+                        },
+                        "hits": {
+                            "type": "integer"
+                        },
+                        "kibanaSavedObjectMeta": {
+                            "properties": {
+                                "searchSourceJSON": {
+                                    "type": "text"
+                                }
+                            }
+                        },
+                        "timelion_chart_height": {
+                            "type": "integer"
+                        },
+                        "timelion_columns": {
+                            "type": "integer"
+                        },
+                        "timelion_interval": {
+                            "type": "keyword"
+                        },
+                        "timelion_other_interval": {
+                            "type": "keyword"
+                        },
+                        "timelion_rows": {
+                            "type": "integer"
+                        },
+                        "timelion_sheet": {
+                            "type": "text"
+                        },
+                        "title": {
+                            "type": "text"
+                        },
+                        "version": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "type": {
                     "type": "keyword"
-                  },
-                  "timelion_rows": {
-                    "type": "integer"
-                  },
-                  "timelion_sheet": {
-                    "type": "text"
-                  },
-                  "title": {
-                    "type": "text"
-                  },
-                  "version": {
-                    "type": "integer"
-                  }
-                }
-              },
-              "type": {
-                "type": "keyword"
-              },
-              "updated_at": {
-                "type": "date"
-              },
-              "url": {
-                "properties": {
-                  "accessCount": {
-                    "type": "long"
-                  },
-                  "accessDate": {
+                },
+                "updated_at": {
                     "type": "date"
-                  },
-                  "createDate": {
-                    "type": "date"
-                  },
-                  "url": {
-                    "type": "text",
-                    "fields": {
-                      "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 2048
-                      }
-                    }
-                  }
-                }
-              },
-              "visualization": {
-                "properties": {
-                  "description": {
-                    "type": "text"
-                  },
-                  "kibanaSavedObjectMeta": {
+                },
+                "url": {
                     "properties": {
-                      "searchSourceJSON": {
-                        "type": "text"
-                      }
+                        "accessCount": {
+                            "type": "long"
+                        },
+                        "accessDate": {
+                            "type": "date"
+                        },
+                        "createDate": {
+                            "type": "date"
+                        },
+                        "url": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 2048
+                                }
+                            }
+                        }
                     }
-                  },
-                  "savedSearchId": {
-                    "type": "keyword"
-                  },
-                  "title": {
-                    "type": "text"
-                  },
-                  "uiStateJSON": {
-                    "type": "text"
-                  },
-                  "version": {
-                    "type": "integer"
-                  },
-                  "visState": {
-                    "type": "text"
-                  }
+                },
+                "visualization": {
+                    "properties": {
+                        "description": {
+                            "type": "text"
+                        },
+                        "kibanaSavedObjectMeta": {
+                            "properties": {
+                                "searchSourceJSON": {
+                                    "type": "text"
+                                }
+                            }
+                        },
+                        "savedSearchId": {
+                            "type": "keyword"
+                        },
+                        "title": {
+                            "type": "text"
+                        },
+                        "uiStateJSON": {
+                            "type": "text"
+                        },
+                        "version": {
+                            "type": "integer"
+                        },
+                        "visState": {
+                            "type": "text"
+                        }
+                    }
                 }
-              }
             }
-          }
         }
+    }
 }
 
 
@@ -489,8 +486,7 @@ class ElasticSearch:
             # Index does no exists
             r = self.requests.put(self.index_url, headers=headers)
             if r.status_code != 200:
-                logger.error("Can't create index {} ({})".format(
-                             self.index, r.status_code))
+                logger.error("Can't create index {} ({})".format(self.index, r.status_code))
                 raise Exception
             else:
                 logger.info("Created index {}".format(self.index))
@@ -558,9 +554,9 @@ def clean_dashboard(dash_json, data_sources=None, add_vis_studies=False, viz_tit
         if data_sources:
             for ds in data_sources:
 
-                if panel['id'].split("_")[0] == ds or\
-                   panel['title'].split()[0].lower() == ds or\
-                   viz_titles[panel['id']].split("_")[0] == ds:
+                if panel['id'].split("_")[0] == ds or \
+                        panel['title'].split()[0].lower() == ds or \
+                        viz_titles[panel['id']].split("_")[0] == ds:
                     clean_panelsJSON.append(panel)
                     break
         else:
@@ -701,7 +697,6 @@ def import_item_json(elastic, type_, item_id, item_json, data_sources=None,
         res_content = res.json()
         if res_content['error']['type'] == "strict_dynamic_mapping_exception" and \
                 RELEASE_DATE in res_content['error']['reason']:
-
             logger.debug("Field `%s` not present in `.kibana` mapping.", RELEASE_DATE)
 
             # Update .kibana mapping
@@ -789,8 +784,7 @@ def get_index_pattern_json(elastic, index_pattern_id):
 def get_search_from_vis(elastic, vis):
     search_id = None
     vis_json = get_vis_json(elastic, vis)
-    if not vis_json:
-        search_id
+
     # The index pattern could be in search or in state
     # First search for it in saved search
     if "savedSearchId" in vis_json:
@@ -999,7 +993,7 @@ def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host,
             vis_data['title'] = vis_id
             vis_meta = json.loads(
                 vis_data['kibanaSavedObjectMeta']['searchSourceJSON']
-                )
+            )
             vis_meta['index'] = enrich_index
             vis_data['kibanaSavedObjectMeta']['searchSourceJSON'] = \
                 json.dumps(vis_meta)
@@ -1031,7 +1025,7 @@ def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host,
     # Load template panels to create the new ones with their new vis
     panels = json.loads(dash_data['panelsJSON'])
     dash_data['panelsJSON'] = json.dumps(new_panels(elastic, panels,
-                                         search_id))
+                                                    search_id))
     dash_path = "/dashboard/" + dashboard + "__" + enrich_index
     url = elastic.index_url + dash_path
     res = requests_ses.post(url, data=json.dumps(dash_data), verify=False,
@@ -1042,7 +1036,6 @@ def create_dashboard(elastic_url, dashboard, enrich_index, kibana_host,
 
 
 def search_dashboards(elastic_url, es_index=None):
-
     dashboards = []
 
     if not es_index:
@@ -1077,7 +1070,6 @@ def search_dashboards(elastic_url, es_index=None):
 
 
 def list_dashboards(elastic_url, es_index=None):
-
     dashboards = search_dashboards(elastic_url, es_index)
     for dash in dashboards:
         print("_id:%s title:%s" % (dash["_id"], dash["title"]))
@@ -1096,8 +1088,7 @@ def read_panel_file(panel_file):
         with open(panel_file, 'r') as f:
             kibana_str = f.read()
     except FileNotFoundError:
-        logger.error("Panel not found (not in directory, "
-                     + "no panels module): %s",
+        logger.error("Panel not found (not in directory, no panels module): %s",
                      panel_file)
         return None
 
@@ -1205,9 +1196,9 @@ def add_release_item_to_sigils_index(elastic_url, item_uuid, item_type, release_
     item_id = item_uuid.split(':')[1] if ':' in item_uuid else item_uuid
 
     item_json = {
-      "item_id": item_id,
-      "item_type": item_type,
-      "release_date": release_date
+        "item_id": item_id,
+        "item_type": item_type,
+        "release_date": release_date
     }
     res = requests_ses.post(sigils_index_url, data=json.dumps(item_json), verify=False, headers=HEADERS_JSON)
     res.raise_for_status()
@@ -1231,22 +1222,22 @@ def get_release_from_sigils_index(elastic_url, item_id, item_type):
         res.raise_for_status()
 
         query = {
-          "query": {
-              "bool": {
-                  "filter": [
-                      {
-                          "term": {
-                            "item_id.keyword": item_id
-                          }
-                      },
-                      {
-                          "term": {
-                            "item_type.keyword": item_type
-                          }
-                      }
-                  ]
-              }
-          }
+            "query": {
+                "bool": {
+                    "filter": [
+                        {
+                            "term": {
+                                "item_id.keyword": item_id
+                            }
+                        },
+                        {
+                            "term": {
+                                "item_type.keyword": item_type
+                            }
+                        }
+                    ]
+                }
+            }
         }
 
         search_url = sigils_index_url + '/_search'
@@ -1260,7 +1251,7 @@ def get_release_from_sigils_index(elastic_url, item_id, item_type):
             logger.warning("Too many hits for %s %s in Sigils index" % (item_type, item_id))
         else:
             release_date = hits['hits'][0]['_source']['release_date']
-    except:
+    except Exception:
         logger.debug("Item %s %s not found in Sigils index" % (item_type, item_id))
 
     return release_date
@@ -1282,7 +1273,7 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
         logger.error("Wrong file format (can't find dashboard or index_patterns fields): %s",
                      import_file)
         raise RuntimeError("Wrong file format (can't find dashboard or index_patterns fields): %s" %
-                     import_file)
+                           import_file)
 
     if 'dashboard' in json_to_import:
         logger.debug("Panel detected.")
@@ -1336,7 +1327,7 @@ def import_dashboard(elastic_url, kibana_url, import_file, es_index=None,
 
             else:
                 logger.warning("Index Pattern %s not imported from %s. Newer or equal version found in Kibana.",
-                                ip_id, import_file)
+                               ip_id, import_file)
 
     else:
         logger.warning("Strict mode supported only for panels and index patterns.")
@@ -1430,7 +1421,7 @@ def check_kibana_index(es_url, kibana_url, kibana_index=".kibana"):
         res = requests_ses.get(kibana_index_url, verify=False)
         res.raise_for_status()
         kibana_index_ok = True
-    except:
+    except Exception:
         logging.info("%s does not exist. Creating it." % kibana_index_url)
         if create_kibana_index(kibana_url, kibana_index_url):
             kibana_index_ok = True
@@ -1564,7 +1555,7 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
                 kibana["searches"].append(
                     {"id": search_id,
                      "value": get_search_json(elastic, search_id)}
-                    )
+                )
             index_pattern_id = get_index_pattern_from_vis(elastic, vis_id)
             if index_pattern_id and index_pattern_id not in index_ids_done:
                 index_ids_done.append(index_pattern_id)
@@ -1572,14 +1563,14 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
                     {"id": index_pattern_id,
                      "value": get_index_pattern_json(elastic,
                                                      index_pattern_id)}
-                    )
+                )
         elif panel['type'] in ['search']:
             # A search could be directly visualized inside a panel
             search_id = panel['id']
             kibana["searches"].append(
                 {"id": search_id,
                  "value": get_search_json(elastic, search_id)}
-                )
+            )
             index_pattern_id = get_index_pattern_from_search(elastic,
                                                              search_id)
             if index_pattern_id and index_pattern_id not in index_ids_done:
@@ -1588,13 +1579,12 @@ def fetch_dashboard(elastic_url, dash_id, es_index=None):
                     {"id": index_pattern_id,
                      "value": get_index_pattern_json(elastic,
                                                      index_pattern_id)}
-                    )
+                )
 
     return kibana
 
 
 def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
-
     if os.path.isfile(export_file):
         logging.info("%s exists. Remove it before running.", export_file)
         raise RuntimeError("%s exists. Remove it before running." % export_file)
@@ -1605,8 +1595,8 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
         else:
             index_patterns = dash_json.pop("index_patterns")
 
-            with open(export_file, 'w') as f:
-                f.write(json.dumps(dash_json, indent=4, sort_keys=True))
+            with open(export_file, 'w') as fa:
+                fa.write(json.dumps(dash_json, indent=4, sort_keys=True))
 
             export_folder = os.path.dirname(export_file)
 
@@ -1619,8 +1609,8 @@ def export_dashboard_files(dash_json, export_file, split_index_patterns=False):
 
                 index_pattern['value'][RELEASE_DATE] = dt.utcnow().isoformat()
                 index_pattern_importable = {"index_patterns": [index_pattern]}
-                with open(export_file_index, 'w') as f:
-                    f.write(json.dumps(index_pattern_importable, indent=4, sort_keys=True))
+                with open(export_file_index, 'w') as fb:
+                    fb.write(json.dumps(index_pattern_importable, indent=4, sort_keys=True))
 
 
 def export_dashboard(elastic_url, dash_id, export_file, es_index=None, split_index_patterns=False):
