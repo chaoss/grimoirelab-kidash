@@ -70,7 +70,7 @@ setup(name="kidash",
       scripts=["bin/kidash"],
       install_requires=['python-dateutil',
                         'requests==2.21.0',
-                        'urllib3==1.24.3'
+                        'urllib3==1.26.5'
                         ],
       include_package_data=True,
       zip_safe=False
