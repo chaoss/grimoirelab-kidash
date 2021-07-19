@@ -69,7 +69,7 @@ setup(name="kidash",
       test_suite='tests',
       scripts=["bin/kidash"],
       install_requires=['python-dateutil',
-                        'requests==2.21.0',
+                        'requests==2.26.0',
                         'urllib3==1.26.5'
                         ],
       include_package_data=True,
