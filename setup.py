@@ -57,17 +57,19 @@ setup(name="kidash",
           'License :: OSI Approved :: ' +
           'GNU General Public License v3 or later (GPLv3+)',
           'Programming Language :: Python :: 3',
-          'Programming Language :: Python :: 3.4',
-          'Programming Language :: Python :: 3.5',
-          'Programming Language :: Python :: 3.6'],
+          'Programming Language :: Python :: 3.7'],
       keywords="development repositories analytics",
-      packages=['kidash'],
-      python_requires='>=3.4',
+      packages=['kidash', 'kidash.bin'],
+      python_requires='>=3.7',
       setup_requires=['wheel'],
       extras_require={},
       tests_require=[],
       test_suite='tests',
-      scripts=["bin/kidash"],
+      entry_points={
+          'console_scripts': [
+              'kidash=kidash.bin.kidash:main'
+          ]
+      },
       install_requires=['python-dateutil',
                         'requests==2.26.0',
                         'urllib3==1.26.5'

@@ -28,6 +28,35 @@ from requests import HTTPError
 from kidash.kidash import import_dashboard, export_dashboard, list_dashboards
 
 
+def main():
+
+    args = get_params()
+
+    config_logging(args.debug)
+
+    try:
+        if args.import_file:
+            import_dashboard(args.elastic_url, args.kibana_url, args.import_file, args.kibana_index,
+                             args.data_sources, args.add_vis_studies, args.strict)
+        elif args.export_file:
+            if args.dashboard:
+                export_dashboard(args.elastic_url, args.dashboard, args.export_file,
+                                 args.kibana_index, args.split_index_patterns)
+        elif args.list:
+            list_dashboards(args.elastic_url, args.kibana_index)
+
+    except HTTPError as http_error:
+        res = http_error.response
+        error_msg = u'%s. Content: %s' % (http_error, res.content)
+        logging.error(error_msg)
+
+    except ValueError as value_error:
+        logging.error(value_error)
+
+    except RuntimeError as runtime_error:
+        logging.error(runtime_error)
+
+
 def get_params_parser_create_dash():
     """Parse command line arguments"""
 
@@ -52,7 +81,6 @@ def get_params_parser_create_dash():
                         action='store_true', help="Include visualizations for studies")
     parser.add_argument("--kibana-url", dest="kibana_url", default="http://localhost:5601",
                         help="Kibana URL (http://localhost:5601 by default)")
-
 
     return parser
 
@@ -81,29 +109,4 @@ def config_logging(debug):
 
 
 if __name__ == '__main__':
-
-    ARGS = get_params()
-
-    config_logging(ARGS.debug)
-
-    try:
-        if ARGS.import_file:
-            import_dashboard(ARGS.elastic_url, ARGS.kibana_url, ARGS.import_file, ARGS.kibana_index,
-                             ARGS.data_sources, ARGS.add_vis_studies, ARGS.strict)
-        elif ARGS.export_file:
-            if ARGS.dashboard:
-                export_dashboard(ARGS.elastic_url, ARGS.dashboard, ARGS.export_file,
-                                 ARGS.kibana_index, ARGS.split_index_patterns)
-        elif ARGS.list:
-            list_dashboards(ARGS.elastic_url, ARGS.kibana_index)
-
-    except HTTPError as http_error:
-        res = http_error.response
-        error_msg = u'%s. Content: %s' % (http_error, res.content)
-        logging.error(error_msg)
-
-    except ValueError as value_error:
-        logging.error(value_error)
-
-    except RuntimeError as runtime_error:
-        logging.error(runtime_error)
+    main()

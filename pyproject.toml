@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "kidash"
+version = "0.4.21"
+description = "GrimoireLab script to manage Kibana dashboards from the command line"
+authors = [
+    "GrimoireLab Developers"
+]
+license = "GPL-3.0+"
+
+readme = "README.md"
+
+homepage = "https://chaoss.github.io/grimoirelab/"
+repository = "https://github.com/chaoss/grimoirelab-kidash"
+
+keywords = [
+    "development",
+    "grimoirelab"
+]
+
+packages = [
+    { include = "kidash" },
+    { include = "tests", format = "sdist" },
+]
+
+classifiers = [
+   "Development Status :: 5 - Production/Stable",
+   "Intended Audience :: Developers",
+   "Topic :: Software Development",
+   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+   "Programming Language :: Python :: 3"
+]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/chaoss/grimoirelab-kidash/issues"
+
+[tool.poetry.scripts]
+kidash = 'kidash.bin.kidash:main'
+
+[tool.poetry.dependencies]
+python = "^3.7"
+python-dateutil = "^2.8.2"
+requests = "2.26.0"
+urllib3 = "1.26.5"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
