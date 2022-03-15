@@ -1,4 +1,4 @@
-# Kidash [![Build Status](https://github.com/chaoss/grimoirelab-kidash/workflows/build/badge.svg)](https://github.com/chaoss/grimoirelab-kidash/actions?query=workflow:build+branch:master+event:push) [![Coverage Status](https://img.shields.io/coveralls/chaoss/grimoirelab-kidash.svg)](https://coveralls.io/r/chaoss/grimoirelab-kidash?branch=master)
+# Kidash [![Build Status](https://github.com/chaoss/grimoirelab-kidash/workflows/tests/badge.svg)](https://github.com/chaoss/grimoirelab-kidash/actions?query=workflow:tests+branch:master+event:push) [![Coverage Status](https://img.shields.io/coveralls/chaoss/grimoirelab-kidash.svg)](https://coveralls.io/r/chaoss/grimoirelab-kidash?branch=master)
 
 Kidash is a tool for managing Kibana-related dashboards from the command line. The standard GrimoireLab dashboards
 are available in the [Sigils](https://github.com/chaoss/grimoirelab-sigils) repository.
