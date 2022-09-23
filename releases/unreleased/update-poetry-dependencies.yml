@@ -1,0 +1,7 @@
+---
+title: Update Poetry dependencies
+category: other
+author: Jose Javier Merchante <jjmerchante@bitergia.com>
+issue: null
+notes: >
+    Update package dependencies for the new release.
