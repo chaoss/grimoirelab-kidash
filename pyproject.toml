@@ -39,8 +39,8 @@ kidash = 'kidash.bin.kidash:main'
 [tool.poetry.dependencies]
 python = "^3.7"
 python-dateutil = "^2.8.2"
-requests = "2.26.0"
-urllib3 = "1.26.5"
+requests = "^2.7.0"
+urllib3 = "^1.26"
 
 [tool.poetry.dev-dependencies]
 flake8 = "^4.0.1"
