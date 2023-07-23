@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kidash"
-version = "0.5.8"
+version = "0.5.9-rc.1"
 description = "GrimoireLab script to manage Kibana dashboards from the command line"
 authors = [
     "GrimoireLab Developers"
