@@ -1,5 +1,13 @@
 # Releases
 
+## kidash 0.6.4 - (2023-12-19)
+
+**Dependencies updateds:**
+
+ * Downgrade urllib3 from ^2.0.7 to ^1.26\
+   Downgrade the version of urllib3 to match Perceval version.
+
+
   ## kidash 0.6.3 - (2023-11-28)
   
   * Update Poetry's package dependencies

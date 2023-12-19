@@ -1,7 +1,0 @@
----
-title: Downgrade urllib3 from ^2.0.7 to ^1.26
-category: dependency
-author: Jose Javier Merchante <jjmerchante@bitergia.com>
-issue: null
-notes: >
-  Downgrade the version of urllib3 to match Perceval version.
