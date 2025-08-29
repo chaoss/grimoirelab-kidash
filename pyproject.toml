@@ -43,13 +43,13 @@ classifiers = [
 kidash = 'kidash.bin.kidash:main'
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 
 python-dateutil = "^2.8.2"
 requests = "^2.7.0"
 urllib3 = "^2.2"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 flake8 = "^7.1.1"
 coverage = "^7.2.3"
 
