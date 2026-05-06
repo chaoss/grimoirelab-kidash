@@ -1,5 +1,9 @@
 # Releases
 
+  ## kidash 1.1.8 - (2026-05-06)
+  
+  * Update Poetry's package dependencies
+
   ## kidash 1.1.7 - (2026-03-03)
   
   * Update Poetry's package dependencies
